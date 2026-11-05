@@ -41,7 +41,9 @@
 </div>
 
 <div id="player" hidden>
+  <canvas id="glow" width="48" height="27" aria-hidden="true"></canvas>
   <video id="video" playsinline></video>
+  <div id="seekfx" aria-hidden="true"><span></span></div>
   <div id="tcard" aria-hidden="true"><span></span></div>
   <div id="cap"></div>
   <div id="spinner" hidden aria-label="Loading"></div>
@@ -52,7 +54,7 @@
   <div id="menu" hidden></div>
   <input type="file" id="subfile" accept=".srt,.vtt" hidden>
   <div class="bar bottom">
-    <div id="seek" role="slider" aria-label="Seek"><div class="trk"><i id="buf"></i><i id="played"></i></div><div id="tip" class="mono"></div></div>
+    <div id="seek" role="slider" aria-label="Seek"><div class="trk"><i id="buf"></i><i id="played"></i></div><div id="tip"><img alt=""><span class="mono"></span></div></div>
     <div class="ctl">
       <button id="play" class="cb" aria-label="Play"><i data-ic="play"></i></button>
       <button id="b10" class="cb" aria-label="Back 10 seconds"><i data-ic="back10"></i></button>
