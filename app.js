@@ -602,7 +602,11 @@
         .concat([head("Ambient light"), item(ambLabel(), false, function () { openMenu("amb"); }, "styles, presets, custom")]);
     },
     amb: function () {
-      var rows = [head("Ambient light")], pct = function (v) { return Math.round(v * 100) + "%"; };
+      var back = el("button", "mi mback");   // a submenu: its title row leads back to Zoom
+      back.setAttribute("aria-label", "Back to zoom");
+      back.appendChild(ic("back")); back.appendChild(el("span", "lbl", "Ambient light"));
+      back.onclick = function () { openMenu("zoom"); };
+      var rows = [back], pct = function (v) { return Math.round(v * 100) + "%"; };
       AMB_ORDER.forEach(function (p) {
         var P = p === "off" ? { label: "Off", note: "" } : p === "custom" ? { label: "Custom", note: "your own settings" } : AMB[p];
         rows.push(item(P.label, ambPreset === p, function () { setAmbPreset(p); refreshMenu(); }, P.note));
@@ -620,7 +624,6 @@
         if (ambCfg().mode === "glow") rows.push(row("Size", "size", pct));
         rows.push(row("Follow speed", "follow", pct));
       }
-      rows.push(item("Back to zoom", false, function () { openMenu("zoom"); }));
       return rows;
     },
     more: function () {
@@ -1269,6 +1272,7 @@
     // Back: TV remotes, Escape, Backspace outside text fields
     if (k === "goback" || k === "browserback" || (k === "backspace" && !typing) || k === "escape") {
       if (typing) { t.blur(); return done(); }
+      if (menuKind === "amb") { openMenu("zoom"); return done(); }   // a submenu steps back to its parent first
       if (menuKind) { hideMenu(); if (cur) $("more").focus(); return done(); }
       if (k === "escape" && document.fullscreenElement) return;   // let the browser leave fullscreen
       if (overlay) { requestClose(); return done(); }

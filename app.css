@@ -282,10 +282,11 @@ a{color:inherit}
 .mir.edge canvas{display:none}
 .mir.edge{filter:blur(var(--ab,36px)) saturate(var(--as,1.5))}
 .mir::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0}
-.mir[data-side="t"]::after{background:linear-gradient(to top,transparent,rgba(0,0,0,.3) 45%,#000)}
-.mir[data-side="b"]::after{background:linear-gradient(to bottom,transparent,rgba(0,0,0,.3) 45%,#000)}
-.mir[data-side="l"]::after{background:linear-gradient(to left,transparent,rgba(0,0,0,.3) 45%,#000)}
-.mir[data-side="r"]::after{background:linear-gradient(to right,transparent,rgba(0,0,0,.3) 45%,#000)}
+/* only Edge fades toward the screen edge; Mirror reflects all the way out */
+.mir.edge[data-side="t"]::after{background:linear-gradient(to top,transparent,rgba(0,0,0,.3) 45%,#000)}
+.mir.edge[data-side="b"]::after{background:linear-gradient(to bottom,transparent,rgba(0,0,0,.3) 45%,#000)}
+.mir.edge[data-side="l"]::after{background:linear-gradient(to left,transparent,rgba(0,0,0,.3) 45%,#000)}
+.mir.edge[data-side="r"]::after{background:linear-gradient(to right,transparent,rgba(0,0,0,.3) 45%,#000)}
 #player.closing .mir{opacity:0!important;transition:opacity .2s}
 .tv .mir{display:none}
 video{position:relative;display:block;width:100%;height:100%;object-fit:contain;background:transparent;opacity:0;touch-action:none;transition:opacity .9s var(--ease),transform .8s var(--spring)}
@@ -385,6 +386,9 @@ video{position:relative;display:block;width:100%;height:100%;object-fit:contain;
 .mi:active{transform:scale(.98)}
 .mi:focus-visible{background:rgba(255,255,255,.1)}
 .mi .ck{width:18px;color:var(--accent);font-weight:700}
+.mback{position:-webkit-sticky;position:sticky;top:-8px;z-index:1;margin:-8px 0 4px;padding-top:14px;padding-bottom:10px;border-radius:var(--r) var(--r) var(--r-sm) var(--r-sm);
+  background:rgba(16,17,20,.96);font-weight:600;color:var(--label)}
+.mback .ic{width:18px;height:18px;color:var(--label-2)}
 .mi .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mi small{color:var(--label-2);font:400 .75rem var(--mono);white-space:nowrap}
 .adj{display:flex;align-items:center;min-height:44px;padding:4px 12px}
