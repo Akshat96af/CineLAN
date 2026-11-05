@@ -10,18 +10,31 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Cinema">
 <title>Cinema</title>
+<link rel="preload" href="fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css">
 </head>
 <body data-view="boot">
+<!-- opening sequence: the wordmark rises letter by letter, the gate line fills as the library loads, then the frame opens -->
+<div id="boot" aria-hidden="true">
+  <div class="lid top"></div><div class="lid bot"></div>
+  <div class="bmark"><span class="w"><span style="--i:0">C</span><span style="--i:1">I</span><span style="--i:2">N</span><span style="--i:3">E</span><span style="--i:4">M</span><span style="--i:5">A</span></span></div>
+  <div class="bline"><i id="bootbar"></i></div>
+</div>
 <div id="amb" aria-hidden="true"><i></i><i></i></div>
 
 <div id="app">
   <header id="top" hidden>
-    <a id="home" class="pill" href="#/" aria-label="Back to home"><i data-ic="back"></i><span>Home</span></a>
-    <span id="ttl" aria-hidden="true"></span>
-    <label class="search"><i data-ic="search"></i><input id="search" type="search" placeholder="Search" autocomplete="off" aria-label="Search"></label>
-    <button id="server-btn" class="icon-btn" aria-label="Server address"><i data-ic="gear"></i></button>
+    <nav class="island" aria-label="Sections">
+      <a id="home" class="ib" href="#/" aria-label="Home"><i data-ic="home"></i></a>
+      <div class="seg" id="seg">
+        <span class="seg-thumb" id="segThumb" aria-hidden="true"></span>
+        <a href="#/movies" data-sec="movies">Movies</a><a href="#/videos" data-sec="videos">Videos</a><a href="#/images" data-sec="images">Images</a><a href="#/files" data-sec="files">Files</a>
+      </div>
+      <label class="search" id="searchBox"><i data-ic="search"></i><input id="search" type="search" placeholder="Search" autocomplete="off" aria-label="Search"></label>
+      <button id="server-btn" class="ib" aria-label="Server address"><i data-ic="gear"></i></button>
+    </nav>
+    <span id="ttl" hidden></span>
   </header>
   <main id="view"></main>
 </div>
@@ -41,42 +54,74 @@
 </div>
 
 <div id="player" hidden>
-  <canvas id="glow" width="48" height="27" aria-hidden="true"></canvas>
+  <canvas id="glow" width="96" height="54" aria-hidden="true"></canvas>
+  <div class="mir" id="mirA" aria-hidden="true"><canvas></canvas></div>
+  <div class="mir" id="mirB" aria-hidden="true"><canvas></canvas></div>
   <video id="video" playsinline></video>
+  <div id="launch" aria-hidden="true"></div>
   <div id="seekfx" aria-hidden="true"><span></span></div>
+  <div id="bezel" aria-hidden="true"><span></span></div>
   <div id="tcard" aria-hidden="true"><span></span></div>
   <div id="cap"></div>
-  <div id="spinner" hidden aria-label="Loading"></div>
+  <div id="spinner" hidden role="status" aria-label="Loading">
+    <svg class="ring" viewBox="0 0 50 50" aria-hidden="true"><circle class="rt" cx="25" cy="25" r="20"/><circle class="ra" cx="25" cy="25" r="20"/></svg>
+    <span class="rl">Loading</span>
+  </div>
   <div class="bar top">
     <button id="back" class="icon-btn" aria-label="Close player"><i data-ic="back"></i></button>
-    <span id="ptitle"></span>
+    <span class="grow"></span>
+    <span id="pchips"></span>
   </div>
   <div id="menu" hidden></div>
   <input type="file" id="subfile" accept=".srt,.vtt" hidden>
   <div class="bar bottom">
-    <div id="seek" role="slider" aria-label="Seek"><div class="trk"><i id="buf"></i><i id="played"></i></div><div id="tip"><img alt=""><span class="mono"></span></div></div>
+    <div class="pmeta"><div id="ptitle"></div></div>
+    <div class="tl">
+      <span id="tcur" class="mono">0:00</span>
+      <div id="seek" role="slider" aria-label="Seek"><div class="trk"><i id="buf"></i><i id="played"></i></div><i id="knob"></i><div id="tip"><img alt=""><span class="mono"></span></div></div>
+      <span id="tleft" class="mono">0:00</span>
+    </div>
     <div class="ctl">
-      <button id="play" class="cb" aria-label="Play"><i data-ic="play"></i></button>
+      <button id="play" class="cb big" aria-label="Play"><i data-ic="play"></i></button>
       <button id="b10" class="cb" aria-label="Back 10 seconds"><i data-ic="back10"></i></button>
       <button id="f10" class="cb" aria-label="Forward 10 seconds"><i data-ic="fwd10"></i></button>
       <button id="mute" class="cb" aria-label="Mute"><i data-ic="vol"></i></button>
       <input id="vol" type="range" min="0" max="1" step="0.05" aria-label="Volume">
-      <span id="time" class="mono">0:00 / 0:00</span>
       <span class="grow"></span>
-      <button id="next" class="cb" hidden aria-label="Next episode"><i data-ic="next"></i></button>
-      <button id="audio" class="cb mbtn" hidden aria-label="Audio track"><i data-ic="audio"></i></button>
-      <button id="subs" class="cb mbtn" aria-label="Subtitles"><i data-ic="cc"></i></button>
-      <button id="chap" class="cb mbtn" hidden aria-label="Chapters"><i data-ic="chapters"></i></button>
-      <button id="speed" class="cb mono" aria-label="Playback speed">1×</button>
-      <button id="compat" class="cb" hidden aria-label="Compatibility mode (re-encode video)" title="Compatibility mode: also re-encode video (HEVC, 10-bit, black picture)"><i data-ic="bolt"></i></button>
-      <button id="more" class="cb mbtn" aria-label="More options"><i data-ic="more"></i></button>
-      <button id="pip" class="cb" aria-label="Picture in picture"><i data-ic="pip"></i></button>
-      <button id="fs" class="cb" aria-label="Fullscreen"><i data-ic="fs"></i></button>
+      <div class="group">
+        <button id="next" class="cb" hidden aria-label="Next episode"><i data-ic="next"></i></button>
+        <button id="audio" class="cb mbtn" hidden aria-label="Audio track"><i data-ic="audio"></i></button>
+        <button id="subs" class="cb mbtn" aria-label="Subtitles"><i data-ic="cc"></i></button>
+        <button id="chap" class="cb mbtn" hidden aria-label="Chapters"><i data-ic="chapters"></i></button>
+        <button id="zoom" class="cb mbtn" aria-label="Zoom and ambient light"><i data-ic="expand"></i></button>
+        <button id="speed" class="cb mono" aria-label="Playback speed">1×</button>
+        <button id="compat" class="cb" hidden aria-label="Compatibility mode (re-encode video)" title="Compatibility mode: also re-encode video (HEVC, 10-bit, black picture)"><i data-ic="bolt"></i></button>
+        <button id="more" class="cb mbtn" aria-label="More options"><i data-ic="more"></i></button>
+        <button id="pip" class="cb" aria-label="Picture in picture"><i data-ic="pip"></i></button>
+        <button id="fs" class="cb" aria-label="Fullscreen"><i data-ic="fs"></i></button>
+      </div>
     </div>
   </div>
 </div>
 
 <div id="toast" role="status"></div>
+<script>
+// If anything breaks, say so on screen (a TV or phone has no console). Also catches app.js failing to load at all.
+(function () {
+  var shown = 0;
+  window.addEventListener("error", function (e) {
+    var t = e.target;
+    if (t && t.tagName && t.tagName !== "SCRIPT" && t.tagName !== "LINK") return;   // a missing thumbnail is not a problem worth a banner
+    var msg = t && t.tagName ? "could not load " + (t.src || t.href || t.tagName) : (e.message || "error") + (e.filename ? " (" + e.filename.split("/").pop() + ":" + e.lineno + ")" : "");
+    if (++shown > 1) return;
+    var b = document.createElement("div");
+    b.setAttribute("role", "alert");
+    b.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;padding:12px 16px;border-radius:12px;background:#2a1215;color:#ffd7d7;border:1px solid #7a2b33;font:14px/1.45 system-ui,sans-serif";
+    b.textContent = "Cinema hit a problem: " + msg + ". Try reloading; if it keeps happening, send this message to the developer.";
+    document.body.appendChild(b);
+  }, true);
+})();
+</script>
 <script src="app.js"></script>
 </body>
 </html>
