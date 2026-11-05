@@ -281,7 +281,10 @@
     }
     video.src = url;
     video.playbackRate = video.defaultPlaybackRate;   // a new src would otherwise reset the speed
-    if (!conv && t > 0) video.addEventListener("loadedmetadata", function () { video.currentTime = t; }, { once: true });
+    if (!conv && t > 0) {   // removes itself: older TV browsers ignore { once: true }
+      var resumeAt = function () { video.removeEventListener("loadedmetadata", resumeAt); video.currentTime = t; };
+      video.addEventListener("loadedmetadata", resumeAt);
+    }
     $("spinner").hidden = false;
     $("compat").hidden = !conv;
     var pr = video.play();
@@ -845,7 +848,7 @@
     lbShow(i, 0, from);
     lb.el.getBoundingClientRect();
     lb.el.classList.add("show");
-    if (TV || !FINE) setTimeout(function () { $("lb-close").focus({ preventScroll: true }); }, 50);
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   // remote: left/right change photo, up reaches the buttons
   }
   function doCloseLb() {
     lb.open = false;
@@ -1001,9 +1004,10 @@
     }
     if (typing) return;
 
-    if (lb.open) {   // image viewer: left/right change photo, up/down reach the buttons
-      if (k === "arrowright" && !inBar) return done(), lbGo(1);
-      if (k === "arrowleft" && !inBar) return done(), lbGo(-1);
+    if (lb.open) {   // image viewer: left/right change photo, up/down reach the buttons (then left/right move between them)
+      var inLbBar = t && t.closest ? t.closest(".lb-top") : null;
+      if (k === "arrowright" && !inLbBar) return done(), lbGo(1);
+      if (k === "arrowleft" && !inLbBar) return done(), lbGo(-1);
       if (k === "+" || k === "=") return done(), lbZoom(lb.z * 1.4, 0, 0);
       if (k === "-") return done(), lbZoom(lb.z / 1.4, 0, 0);
       if (k === "0") return done(), lbZoom(1, 0, 0);
