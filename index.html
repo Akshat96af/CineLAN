@@ -4,23 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07090c">
+<meta name="theme-color" content="#060607">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cinema">
 <title>Cinema</title>
+<link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css">
 </head>
 <body data-view="boot">
-<div id="stage" aria-hidden="true">
-  <div class="glow g1"></div><div class="glow g2"></div>
-  <div class="beam b1"></div><div class="beam b2"></div>
-  <canvas id="dust"></canvas>
-  <div class="streak"></div>
-  <div class="vignette"></div>
-</div>
-<div id="grain" aria-hidden="true"></div>
+<div id="amb" aria-hidden="true"><i></i><i></i></div>
 
 <div id="app">
   <header id="top" hidden>
     <a id="home" class="pill" href="#/" aria-label="Back to home"><i data-ic="back"></i><span>Home</span></a>
+    <span id="ttl" aria-hidden="true"></span>
     <label class="search"><i data-ic="search"></i><input id="search" type="search" placeholder="Search" autocomplete="off" aria-label="Search"></label>
     <button id="server-btn" class="icon-btn" aria-label="Server address"><i data-ic="gear"></i></button>
   </header>
@@ -31,7 +30,7 @@
   <div id="lb-bg"></div>
   <div id="lb-stage"></div>
   <div class="lb-top">
-    <span id="lb-name"></span><span id="lb-count"></span>
+    <span id="lb-name"></span><span id="lb-count" class="mono"></span>
     <span class="grow"></span>
     <button id="lb-zoom" class="icon-btn" aria-label="Zoom"><i data-ic="zoom"></i></button>
     <a id="lb-dl" class="icon-btn" aria-label="Download" href="#"><i data-ic="download"></i></a>
@@ -53,20 +52,20 @@
   <div id="menu" hidden></div>
   <input type="file" id="subfile" accept=".srt,.vtt" hidden>
   <div class="bar bottom">
-    <div id="seek" role="slider" aria-label="Seek"><div id="buf"></div><div id="played"></div><div id="tip"></div></div>
+    <div id="seek" role="slider" aria-label="Seek"><div class="trk"><i id="buf"></i><i id="played"></i></div><div id="tip" class="mono"></div></div>
     <div class="ctl">
       <button id="play" class="cb" aria-label="Play"><i data-ic="play"></i></button>
       <button id="b10" class="cb" aria-label="Back 10 seconds"><i data-ic="back10"></i></button>
       <button id="f10" class="cb" aria-label="Forward 10 seconds"><i data-ic="fwd10"></i></button>
       <button id="mute" class="cb" aria-label="Mute"><i data-ic="vol"></i></button>
       <input id="vol" type="range" min="0" max="1" step="0.05" aria-label="Volume">
-      <span id="time">0:00 / 0:00</span>
+      <span id="time" class="mono">0:00 / 0:00</span>
       <span class="grow"></span>
       <button id="next" class="cb" hidden aria-label="Next episode"><i data-ic="next"></i></button>
       <button id="audio" class="cb mbtn" hidden aria-label="Audio track"><i data-ic="audio"></i></button>
       <button id="subs" class="cb mbtn" aria-label="Subtitles"><i data-ic="cc"></i></button>
       <button id="chap" class="cb mbtn" hidden aria-label="Chapters"><i data-ic="chapters"></i></button>
-      <button id="speed" class="cb" aria-label="Playback speed">1×</button>
+      <button id="speed" class="cb mono" aria-label="Playback speed">1×</button>
       <button id="compat" class="cb" hidden aria-label="Compatibility mode (re-encode video)" title="Compatibility mode: also re-encode video (HEVC, 10-bit, black picture)"><i data-ic="bolt"></i></button>
       <button id="more" class="cb mbtn" aria-label="More options"><i data-ic="more"></i></button>
       <button id="pip" class="cb" aria-label="Picture in picture"><i data-ic="pip"></i></button>

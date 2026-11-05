@@ -9,8 +9,7 @@
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode / blocked */ } },
   };
-  // Served by server.py itself -> same origin. Anywhere else (GitHub Pages, file://) -> the PC, over the page's own scheme
-  // (an https page may only call https; see server.py cert.pem).
+  // Default: the PC over the page's own scheme. If this page is served by server.py itself, loadLibrary() switches to its own origin.
   let BASE = store.get("server") || `${location.protocol === "https:" ? "https" : "http"}://${HOST}`;
 
   const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -38,7 +37,7 @@
   try { langNames = new Intl.DisplayNames(["en"], { type: "language" }); } catch { /* old browser: show raw code */ }
   const langName = c => { if (!c || c === "und") return ""; try { return langNames?.of(c) || c; } catch { return c; } };
 
-  // ---- icons: one family, 24px grid, 1.75 stroke ----------------------------
+  // ---- icons: one family, 24px grid, light stroke ------------------------------
   const ICONS = {
     play: '<path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>',
     pause: '<rect x="6.5" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/>',
@@ -82,7 +81,8 @@
   const IMG_EXT = new Set(["jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp", "avif", "svg", "heic", "heif", "tif", "tiff"]);
   const IMG_NATIVE = new Set(["jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp", "avif", "svg"]);
 
-  let files = [], movies = [], videos = [], images = [], libError = "";
+  let files = [], movies = [], videos = [], images = [];
+  let libError = "";   // "", "launcher" (https page, plain-http PC), or a message
   const natural = (a, b) => a.path.localeCompare(b.path, undefined, { numeric: true });
   const extOf = n => { const i = n.lastIndexOf("."); return i < 0 ? "" : n.slice(i + 1).toLowerCase(); };
   const thumb = (m, w) => `${BASE}/api/thumb/${enc(m.path)}${w ? "?w=" + w : ""}`;
@@ -97,6 +97,7 @@
     if (!store.get("server") && location.protocol.startsWith("http")) {   // served by server.py itself (any port)? use its own origin
       try { if ((await fetch("/api/files", { method: "HEAD" })).ok) BASE = ""; } catch { /* keep the default address */ }
     }
+    if (location.protocol === "https:" && BASE.startsWith("http://")) { libError = "launcher"; return; }   // browsers block this (mixed content)
     try {
       const r = await fetch(`${BASE}/api/files`);
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -109,8 +110,7 @@
       }
       libError = "";
     } catch {
-      libError = `Check that the PC is on and server.py is running at ${BASE || location.origin}.` +
-        (location.protocol === "https:" ? " This page is https, so the server must be https too." : "");
+      libError = `Check that the PC is on and server.py is running at ${BASE || location.origin}.`;
     }
   }
 
@@ -134,6 +134,51 @@
     toastTimer = window.setTimeout(() => t.classList.remove("show"), 3500);
   }
 
+  // ---- ambient light: the room takes on the colour of whatever you point at ---------
+  // Two full-screen gradient layers cross-fade by opacity, so this costs the GPU almost nothing.
+  const amb = { layers: [...document.querySelectorAll("#amb i")], on: 0, key: "" };
+  const AMB_DEFAULT = "206 168 112";
+  const ambCache = new WeakMap();
+  function setAmbient(rgb) {
+    rgb = rgb || AMB_DEFAULT;
+    if (rgb === amb.key) return;
+    amb.key = rgb;
+    const next = amb.layers[1 - amb.on], prev = amb.layers[amb.on];
+    next.style.setProperty("--c", rgb); next.classList.add("on"); prev.classList.remove("on");
+    amb.on = 1 - amb.on;
+  }
+  function dominant(img) {
+    if (ambCache.has(img)) return ambCache.get(img);
+    let out = null;
+    try {
+      const c = document.createElement("canvas"); c.width = 16; c.height = 9;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      g.drawImage(img, 0, 0, 16, 9);
+      const d = g.getImageData(0, 0, 16, 9).data;
+      let r = 0, gr = 0, b = 0, w = 0;
+      for (let i = 0; i < d.length; i += 4) {   // saturated, brighter pixels count more than flat shadows
+        const R = d[i], G = d[i + 1], B = d[i + 2], mx = Math.max(R, G, B), mn = Math.min(R, G, B), sat = mx ? (mx - mn) / mx : 0;
+        const wt = 0.1 + sat * sat * 3 + (mx / 255) * 0.4;
+        r += R * wt; gr += G * wt; b += B * wt; w += wt;
+      }
+      r /= w; gr /= w; b /= w;
+      const k = clamp(190 / Math.max(r, gr, b, 1), 0.8, 2.2);   // lift dark artwork so the glow is visible
+      out = [r, gr, b].map(v => Math.round(clamp(v * k, 0, 255))).join(" ");
+    } catch { out = null; /* tainted canvas: stay on the default light */ }
+    ambCache.set(img, out);
+    return out;
+  }
+  function ambientOf(node) {
+    const imgs = [...node.querySelectorAll("img")].filter(i => i.complete && i.naturalWidth);
+    const img = imgs[Math.min(1, imgs.length - 1)];
+    return img ? dominant(img) : null;
+  }
+  const ambPoint = e => { const n = e.target.closest?.("[data-amb]"); setAmbient(n ? ambientOf(n) : null); };
+  document.addEventListener("pointerover", ambPoint);
+  document.addEventListener("focusin", ambPoint);
+  document.documentElement.addEventListener("pointerleave", () => setAmbient(null));
+  setAmbient(null);
+
   // ---- overlays share the history stack: the phone/TV back button closes them ----
   let overlay = null, pushed = false;
   function pushOverlay(kind) { overlay = kind; try { history.pushState({ ov: kind }, ""); pushed = true; } catch { pushed = false; } }
@@ -147,23 +192,24 @@
   addEventListener("popstate", onNav);
   addEventListener("hashchange", onNav);
 
-  // spatial continuity: an element grows from where it was clicked, and shrinks back
-  function expandFrom(node, from) {
-    if (!from || reduced()) return;
+  // an overlay grows out of the element you clicked and shrinks back into it (transform + opacity only)
+  function flipFrom(node, from) {
     const r = from.getBoundingClientRect();
-    node.style.transition = "none";
-    node.style.clipPath = `inset(${r.top}px ${innerWidth - r.right}px ${innerHeight - r.bottom}px ${r.left}px round 20px)`;
-    node.getBoundingClientRect();
-    node.style.transition = "clip-path .9s var(--ease)";
-    node.style.clipPath = "inset(0px 0px 0px 0px round 0px)";
-    setTimeout(() => { node.style.transition = ""; node.style.clipPath = ""; }, 950);
+    return `translate3d(${r.left + r.width / 2 - innerWidth / 2}px,${r.top + r.height / 2 - innerHeight / 2}px,0) scale(${Math.max(r.width / innerWidth, r.height / innerHeight)})`;
   }
-  function collapseTo(node, to, done) {
+  function flipIn(node, from) {
+    if (!from || reduced()) return;
+    node.style.transition = "none"; node.style.opacity = "0"; node.style.transform = flipFrom(node, from);
+    node.getBoundingClientRect();
+    node.style.transition = "transform .6s var(--ease), opacity .35s var(--ease)";
+    node.style.transform = "none"; node.style.opacity = "1";
+    setTimeout(() => { node.style.transition = ""; node.style.transform = ""; node.style.opacity = ""; }, 650);
+  }
+  function flipOut(node, to, done) {
     if (!to || !to.isConnected || reduced()) return done();
-    const r = to.getBoundingClientRect();
-    node.style.transition = "clip-path .6s var(--ease-io)";
-    node.style.clipPath = `inset(${r.top}px ${innerWidth - r.right}px ${innerHeight - r.bottom}px ${r.left}px round 20px)`;
-    setTimeout(() => { done(); node.style.transition = ""; node.style.clipPath = ""; }, 620);
+    node.style.transition = "transform .45s var(--ease-ios), opacity .3s var(--ease) .1s";
+    node.style.transform = flipFrom(node, to); node.style.opacity = "0";
+    setTimeout(() => { done(); node.style.transition = ""; node.style.transform = ""; node.style.opacity = ""; }, 480);
   }
 
   // ===========================================================================
@@ -226,11 +272,11 @@
       playerFrom = from || null;
       playerEl.hidden = false;
       document.body.classList.add("noscroll");
-      expandFrom(playerEl, playerFrom);
+      flipIn(playerEl, playerFrom);
     }
     cur = m; tr = EMPTY; compat = false; burn = null; off = 0; cues = []; sub = { kind: "off" }; loopA = loopB = null;
     $("ptitle").textContent = m.title;
-    const tc = $("tcard");   // cinematic title card: fades in over the picture, then lifts away
+    const tc = $("tcard");   // title card: fades up over the picture, then lifts away
     tc.firstElementChild.textContent = m.title; tc.classList.remove("play"); void tc.offsetWidth;
     if (!reduced()) tc.classList.add("play");
     $("compat").classList.remove("on");
@@ -254,8 +300,7 @@
     cur = null; cues = []; renderCue(true); hideMenu();
     if (document.fullscreenElement) void document.exitFullscreen();
     document.body.classList.remove("noscroll");
-    collapseTo(playerEl, playerFrom, () => { playerEl.hidden = true; video.removeAttribute("src"); video.load(); });
-    refreshSection();
+    flipOut(playerEl, playerFrom, () => { playerEl.hidden = true; video.removeAttribute("src"); video.load(); refreshSection(); });
   }
 
   function nextOf(m) {
@@ -454,9 +499,10 @@
     video.style.objectFit = n[0]; toast("Aspect: " + n[1]);
   }
 
+  const ratioOf = (t, d) => d ? clamp(t / d, 0, 1) : 0;
   function paint(t) {
     const d = duration();
-    $("played").style.width = (d ? (t / d) * 100 : 0) + "%";
+    $("played").style.transform = `scaleX(${ratioOf(t, d)})`;   // scale, never width: stays on the compositor
     $("time").textContent = `${fmt(t)} / ${fmt(d)}`;
   }
   function tick() {
@@ -467,10 +513,10 @@
     for (let i = 0; i < video.buffered.length; i++) {
       if (video.currentTime >= video.buffered.start(i) - 0.1 && video.currentTime <= video.buffered.end(i) + 0.5) be = video.buffered.end(i);
     }
-    $("buf").style.width = (d ? ((off + be) / d) * 100 : 0) + "%";
+    $("buf").style.transform = `scaleX(${ratioOf(off + be, d)})`;
     save();
   }
-  // per-frame: subtitles and the A-B loop need finer timing than timeupdate's ~4 Hz
+  // per-frame: subtitles and the A-B loop need finer timing than timeupdate's ~4 Hz (only runs while a movie is open)
   function frame() {
     if (cur) {
       renderCue(false);
@@ -480,7 +526,7 @@
   }
   requestAnimationFrame(frame);
 
-  const popIc = n => { n.classList.remove("pop"); void n.offsetWidth; n.classList.add("pop"); };   // restart the icon pop animation
+  const popIc = n => { n.classList.remove("pop"); void n.offsetWidth; n.classList.add("pop"); };   // restart the icon pop
   const setPlayIcon = () => { setIc($("play"), video.paused ? "play" : "pause"); popIc($("play")); $("play").setAttribute("aria-label", video.paused ? "Play" : "Pause"); };
   const toggle = () => { void (video.paused ? video.play().catch(() => undefined) : video.pause()); };
 
@@ -570,16 +616,16 @@
     lbApply(anim);
   }
 
-  function lbMake(m, from, dir) {
+  function lbMake(m) {
     const slot = el("div", "lb-slot"), card = el("div", "lb-card"), img = new Image();
     img.alt = m.name; img.decoding = "async"; card.append(img); slot.append(card);
     const tImg = tileFor.get(m)?.querySelector("img");
     const haveThumb = !!(tImg && tImg.complete && tImg.naturalWidth);
     const ratio = haveThumb ? tImg.naturalWidth / tImg.naturalHeight : lb.ratio;
-    if (haveThumb) {   // show the already-loaded thumbnail soft, then pull focus to the full image
-      img.classList.add("soft"); img.src = tImg.currentSrc;
+    if (haveThumb) {   // show the already-loaded thumbnail instantly, swap to the full image when it arrives
+      img.src = tImg.currentSrc;
       const full = new Image();
-      full.onload = () => { img.src = full.src; img.classList.remove("soft"); };
+      full.onload = () => { img.src = full.src; };
       full.src = lbUrl(m);
     } else img.src = lbUrl(m);
     img.onload = () => { if (!haveThumb && img.naturalWidth && lb.card === card) { lb.ratio = img.naturalWidth / img.naturalHeight; sizeCard(); } };
@@ -587,7 +633,7 @@
   }
 
   function lbShow(i, dir, from) {
-    const m = lb.list[i], made = lbMake(m, from, dir), old = lb.slot;
+    const m = lb.list[i], made = lbMake(m), old = lb.slot;
     lb.i = i; lb.slot = made.slot; lb.card = made.card; lb.z = 1; lb.tx = lb.ty = 0; lb.ratio = made.ratio;
     lb.stage.append(made.slot);
     sizeCard(); lbApply(false);
@@ -597,24 +643,24 @@
         const fr = from.getBoundingClientRect(), sr = stageBox(), [w, h] = fitBox(made.ratio);
         const s = Math.max(fr.width / w, fr.height / h);
         slot.style.transition = "none";
-        slot.style.transform = `translate(${fr.left + fr.width / 2 - (sr.left + sr.width / 2)}px,${fr.top + fr.height / 2 - (sr.top + sr.height / 2)}px) scale(${s})`;
+        slot.style.transform = `translate3d(${fr.left + fr.width / 2 - (sr.left + sr.width / 2)}px,${fr.top + fr.height / 2 - (sr.top + sr.height / 2)}px,0) scale(${s})`;
         slot.getBoundingClientRect();
-        slot.style.transition = "transform .9s var(--ease)";
+        slot.style.transition = "transform .7s var(--ease)";
         slot.style.transform = "none";
       } else if (dir) {               // slide in from the side we are navigating towards
-        slot.style.transition = "none"; slot.style.opacity = "0"; slot.style.transform = `translateX(${dir * 90}px)`;
+        slot.style.transition = "none"; slot.style.opacity = "0"; slot.style.transform = `translate3d(${dir * 80}px,0,0)`;
         slot.getBoundingClientRect();
-        slot.style.transition = "transform .8s var(--ease), opacity .6s var(--ease)";
+        slot.style.transition = "transform .7s var(--ease), opacity .5s var(--ease)";
         slot.style.opacity = "1"; slot.style.transform = "none";
       }
     }
     if (old) {
-      old.style.transition = "transform .8s var(--ease), opacity .5s";
-      old.style.transform = `translateX(${-dir * 90}px)`; old.style.opacity = "0";
-      setTimeout(() => old.remove(), 800);
+      old.style.transition = "transform .7s var(--ease), opacity .45s var(--ease)";
+      old.style.transform = `translate3d(${-dir * 80}px,0,0)`; old.style.opacity = "0";
+      setTimeout(() => old.remove(), 750);
     }
     $("lb-name").textContent = m.name;
-    $("lb-count").textContent = `${i + 1} of ${lb.list.length}`;
+    $("lb-count").textContent = `${i + 1} / ${lb.list.length}`;
     const dl = $("lb-dl"); dl.href = dlUrl(m); dl.setAttribute("download", m.name);
     $("lb-prev").disabled = i === 0; $("lb-next").disabled = i === lb.list.length - 1;
     for (const k of [i - 1, i + 1]) if (lb.list[k]) new Image().src = lbUrl(lb.list[k]);
@@ -640,10 +686,10 @@
     if (slot && tile && tile.isConnected && !reduced()) {
       const fr = tile.getBoundingClientRect(), sr = stageBox(), [w, h] = fitBox(lb.ratio);
       lb.card.style.transition = "none"; lb.card.style.transform = "none";
-      slot.style.transition = "transform .7s var(--ease-io)";
-      slot.style.transform = `translate(${fr.left + fr.width / 2 - (sr.left + sr.width / 2)}px,${fr.top + fr.height / 2 - (sr.top + sr.height / 2)}px) scale(${Math.max(fr.width / w, fr.height / h)})`;
+      slot.style.transition = "transform .55s var(--ease-ios)";
+      slot.style.transform = `translate3d(${fr.left + fr.width / 2 - (sr.left + sr.width / 2)}px,${fr.top + fr.height / 2 - (sr.top + sr.height / 2)}px,0) scale(${Math.max(fr.width / w, fr.height / h)})`;
     }
-    setTimeout(() => { if (!lb.open) { lb.el.hidden = true; lb.stage.replaceChildren(); lb.slot = lb.card = null; } }, 720);
+    setTimeout(() => { if (!lb.open) { lb.el.hidden = true; lb.stage.replaceChildren(); lb.slot = lb.card = null; } }, 600);
   }
 
   // pan when zoomed, swipe to navigate or dismiss otherwise, double tap to zoom
@@ -731,15 +777,20 @@
   // ===========================================================================
   // VIEWS
   // ===========================================================================
-  let sect = null, lastSec = "";
+  let sect = null, titleIO = null;
   const io = "IntersectionObserver" in window
     ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("on"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -6% 0px" })
     : null;
   const armReveal = root => root.querySelectorAll(".reveal").forEach(n => (io ? io.observe(n) : n.classList.add("on")));
-  const imgIn = (img, m, fallbackNative) => {   // blur-up reveal; SVG and friends fall back to the original file
-    img.onload = () => { img.classList.add("ok"); img.parentElement?.classList.add("ready"); };   // "ready" stops the shimmer placeholder
+
+  function mkImg(m, w, fallbackNative) {   // CORS-enabled so the ambient colour can be read; SVG and friends fall back to the original file
+    const img = el("img");
+    img.alt = ""; img.crossOrigin = "anonymous"; img.decoding = "async";
+    img.onload = () => img.classList.add("ok");
     img.onerror = () => { if (fallbackNative && IMG_NATIVE.has(m.ext) && !img.dataset.fb) { img.dataset.fb = 1; img.src = `${BASE}/${enc(m.path)}`; } else img.remove(); };
-  };
+    img.src = thumb(m, w);
+    return img;
+  }
 
   const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : h < 22 ? "Good evening" : "Good night"; };
   const parseHash = () => {
@@ -749,12 +800,13 @@
     return { sec: i < 0 ? h : h.slice(0, i), path };
   };
 
+  // route changes are a slow camera dolly: deeper = push in, shallower = pull back (CSS does the motion)
   let routed = null, prevDepth = 0;
   const depthOf = (sec, path) => SECTIONS[sec] ? 1 + (sec === "files" ? path.split("/").filter(Boolean).length : 0) : 0;
   function route(first) {
     routed = location.hash;
     const { sec, path } = parseHash();
-    const depth = depthOf(sec, path), nav = depth < prevDepth ? "back" : "fwd";   // deeper = camera pushes in, shallower = pulls back
+    const depth = depthOf(sec, path), nav = depth < prevDepth ? "back" : "fwd";
     prevDepth = depth;
     let ran = false;
     const build = () => { if (ran) return; ran = true; if (SECTIONS[sec]) showSection(sec, path); else showLanding(); window.scrollTo(0, 0); };
@@ -766,21 +818,10 @@
       setTimeout(build, 1500);   // the callback waits for a painted frame; never leave the page on the old view if none comes
       return;
     }
-    const view = $("view");   // no View Transitions: the same push / pull choreography with plain CSS animations
+    const view = $("view");   // no View Transitions: the same dolly with plain CSS animations
     view.className = "leaving-" + nav;
-    setTimeout(() => { build(); view.className = "entering-" + nav; setTimeout(() => { view.className = ""; }, 1100); }, 480);
+    setTimeout(() => { build(); view.className = "entering-" + nav; setTimeout(() => { view.className = ""; }, 800); }, 460);
   }
-
-  function errorPanel() {
-    const d = el("div", "panel"), row = el("div", "row");
-    const retry = el("button", "pill", "Try again"), srv = el("button", "pill", "Change server address");
-    retry.onclick = async () => { await loadLibrary(); route(true); };
-    srv.onclick = changeServer;
-    row.append(retry, srv);
-    d.append(el("h2", "", "Can't reach your PC"), el("p", "", libError), row);
-    return d;
-  }
-  const emptyPanel = text => { const d = el("div", "panel"); d.append(el("h2", "", "Nothing here"), el("p", "", text)); return d; };
 
   function changeServer() {
     const v = prompt("Server address (blank = default)", BASE || location.origin);
@@ -790,6 +831,36 @@
   }
   $("server-btn").onclick = changeServer;
   $("search").addEventListener("input", () => refreshSection());
+
+  // ---- problem states ----
+  let launchTimer = 0;
+  function launcherPanel() {
+    const d = el("div", "panel"), row = el("div", "row");
+    const go = el("a", "pill primary", "Open " + BASE.replace(/^https?:\/\//, "")); go.href = BASE;
+    const srv = el("button", "pill", "Change address"); srv.onclick = changeServer;
+    const stay = el("button", "pill", "Stay here"); stay.onclick = () => { clearTimeout(launchTimer); store.set("noauto", "1"); toast("Auto-open is off"); };
+    row.append(go, srv, stay);
+    d.append(el("h2", "", "Open your library"),
+      el("p", "", "This page is hosted online, and browsers will not let it read files from your PC over plain http. Your PC's own address works on every device on this network, so this page opens it for you."),
+      row);
+    let seen = false; try { seen = !!sessionStorage.getItem("launched"); } catch { /* ignore */ }
+    if (!seen && !store.get("noauto")) {   // once per tab, and replace() so Back never traps you here
+      try { sessionStorage.setItem("launched", "1"); } catch { /* ignore */ }
+      launchTimer = window.setTimeout(() => { if (document.body.dataset.view === "landing") location.replace(BASE); }, 1800);
+    }
+    return d;
+  }
+  function errorPanel() {
+    const d = el("div", "panel"), row = el("div", "row");
+    const retry = el("button", "pill", "Try again"), srv = el("button", "pill", "Change server address");
+    retry.onclick = async () => { await loadLibrary(); route(true); };
+    srv.onclick = changeServer;
+    row.append(retry, srv);
+    d.append(el("h2", "", "Can't reach your PC"), el("p", "", libError), row);
+    return d;
+  }
+  const problemPanel = () => libError === "launcher" ? launcherPanel() : errorPanel();
+  const emptyPanel = text => { const d = el("div", "panel"); d.append(el("h2", "", "Nothing here"), el("p", "", text)); return d; };
 
   // ---- landing ----
   function pick(list, n) {
@@ -805,11 +876,10 @@
     const done = () => { node.textContent = `${n.toLocaleString()} ${n === 1 ? unit[0] : unit[1]}`; };
     if (!n) { node.textContent = "Nothing here yet"; return; }
     if (reduced()) return done();
-    const t0 = performance.now() + 700, dur = 1200;
+    const t0 = performance.now() + 500, dur = 900;
     const step = t => {
       if (!node.isConnected) return;
-      const k = clamp((t - t0) / dur, 0, 1);
-      const v = Math.round(n * (1 - Math.pow(1 - k, 4)));
+      const k = clamp((t - t0) / dur, 0, 1), v = Math.round(n * (1 - Math.pow(1 - k, 4)));
       node.textContent = `${v.toLocaleString()} ${v === 1 ? unit[0] : unit[1]}`;
       if (k < 1) requestAnimationFrame(step); else done();
     };
@@ -818,38 +888,30 @@
 
   function portal(sec, i) {
     const S = SECTIONS[sec], list = S.list();
-    const a = el("a", "portal rise"); a.href = `#/${sec}`; a.dataset.sec = sec; a.style.setProperty("--i", i + 5);
+    const a = el("a", "portal rise"); a.href = `#/${sec}`; a.dataset.sec = sec; a.dataset.amb = "1"; a.style.setProperty("--i", i + 5);
     a.setAttribute("aria-label", `${S.title}, ${list.length} items`);
     const fan = el("div", "fan");
     for (const m of sec === "files" ? pickFiles() : pick(list, 3)) {
       if (sec === "files") {
         const d = el("div", "doc"); d.append(ic("file"), el("span", "", (m.ext || "file").toUpperCase().slice(0, 5)));
         fan.append(d);
-      } else {
-        const img = el("img"); img.alt = ""; img.src = thumb(m, 480); img.onerror = () => img.remove();
-        fan.append(img);
-      }
+      } else fan.append(mkImg(m, 480, false));
     }
     const icb = el("span", "p-ic"); icb.append(ic(S.icon));
     const arrow = el("span", "p-arrow"); arrow.append(ic("fwd"));
     const meta = el("div", "p-meta"), count = el("div", "p-count");
     meta.append(el("div", "p-title", S.title), count);
-    a.append(fan, el("div", "shade"), el("div", "spot"), icb, arrow, meta);
+    a.append(fan, el("div", "shade"), icb, arrow, meta);
     countUp(count, list.length, S.unit);
-    a.addEventListener("click", () => { a.style.viewTransitionName = "portal"; });
-    a.addEventListener("pointermove", e => {
-      const r = a.getBoundingClientRect();
-      a.style.setProperty("--mx", e.clientX - r.left + "px"); a.style.setProperty("--my", e.clientY - r.top + "px");
-      a.style.setProperty("--px", ((e.clientX - r.left) / r.width - 0.5) * 2); a.style.setProperty("--py", ((e.clientY - r.top) / r.height - 0.5) * 2);
-    });
-    a.addEventListener("pointerleave", () => { a.style.setProperty("--px", 0); a.style.setProperty("--py", 0); });
     return a;
   }
 
   function showLanding() {
     sect = null;
+    if (titleIO) titleIO.disconnect();
     document.body.dataset.view = "landing";
     $("top").hidden = true;
+    setAmbient(null);
     const root = el("section", "landing");
     const brand = el("div", "brand rise"), gear = el("button", "icon-btn");
     gear.setAttribute("aria-label", "Server address"); gear.append(ic("gear")); gear.onclick = changeServer;
@@ -863,33 +925,37 @@
     p.style.setProperty("--i", 3);
     hero.append(h1, p);
     root.append(brand, hero);
-    if (libError) root.append(errorPanel());
+    if (libError) root.append(problemPanel());
     else {
       const nav = el("nav", "portals"); nav.setAttribute("aria-label", "Library sections");
       ORDER.forEach((sec, i) => nav.append(portal(sec, i)));
       root.append(nav);
-      const back = nav.querySelector(`.portal[data-sec="${lastSec}"]`);   // coming back: the section morphs into its portal
-      if (back) back.style.viewTransitionName = "portal";
     }
     $("view").replaceChildren(root);
   }
 
-  // ---- section pages ----
+  // ---- section pages: an iOS-style large title that collapses into the bar ----
   function showSection(sec, path) {
-    lastSec = sec;
     document.body.dataset.view = "section";
-    $("top").hidden = false;
+    const top = $("top");
+    top.hidden = false; top.classList.remove("solid");
     $("search").value = ""; $("search").placeholder = `Search ${SECTIONS[sec].title.toLowerCase()}`;
+    setAmbient(null);
     const S = SECTIONS[sec], wrap = el("section", "sect"), head = el("div", "sect-head"), body = el("div", "sect-body");
     const n = S.list().length;
-    const h1 = el("h1"), word = el("span", "w"), label = el("span", "", S.title);   // same masked word reveal as the landing headline
+    const h1 = el("h1"), word = el("span", "w"), label = el("span", "", S.title);
     word.append(label); h1.append(word);
     const sub = el("p", "rise", libError ? "Offline" : `${n.toLocaleString()} ${n === 1 ? S.unit[0] : S.unit[1]}`);
     sub.style.setProperty("--i", 2);
     head.append(h1, sub);
-    head.style.viewTransitionName = "portal";
     wrap.append(head, body);
     $("view").replaceChildren(wrap);
+    $("ttl").textContent = S.title;
+    if (titleIO) titleIO.disconnect();
+    if ("IntersectionObserver" in window) {   // large title scrolled away -> the bar turns solid and shows the compact title
+      titleIO = new IntersectionObserver(([e]) => top.classList.toggle("solid", !e.isIntersecting), { rootMargin: "-64px 0px 0px 0px" });
+      titleIO.observe(h1);
+    }
     sect = { sec, path, body };
     renderBody();
   }
@@ -898,7 +964,7 @@
   function renderBody() {
     const { sec, path, body } = sect, q = $("search").value.trim().toLowerCase();
     body.replaceChildren();
-    if (libError) return void body.append(errorPanel());
+    if (libError) return void body.append(problemPanel());
     if (sec === "files") return renderFiles(body, path, q);
     const list = SECTIONS[sec].list(), items = q ? list.filter(m => m.path.toLowerCase().includes(q)) : list;
     if (!items.length) return void body.append(emptyPanel(q ? "Nothing matches your search." : SECTIONS[sec].empty));
@@ -912,14 +978,14 @@
   }
 
   function videoCard(m, i) {
-    const b = el("button", "card reveal"); b.style.setProperty("--d", (i % 8) * 60 + "ms");
+    const b = el("button", "card reveal"); b.style.setProperty("--d", (i % 8) * 50 + "ms"); b.dataset.amb = "1";
     b.setAttribute("aria-label", "Play " + m.title);
-    const th = el("div", "thumb"), img = el("img");
-    img.loading = "lazy"; img.alt = ""; img.src = thumb(m); imgIn(img, m, false);
+    const th = el("div", "thumb"), img = mkImg(m, 0, false);
+    img.loading = "lazy";
     const pg = el("div", "pg"), disc = el("span"); disc.append(ic("play")); pg.append(disc);
     th.append(el("span", "initial", m.title.charAt(0).toUpperCase()), img, pg, el("span", "badge", m.ext.toUpperCase()));
     const g = getProg(m.path);
-    if (g && g.t > 10) { const bar = el("div", "prog"), fill = el("i"); fill.style.width = Math.min(100, (g.t / g.d) * 100) + "%"; bar.append(fill); th.append(bar); }
+    if (g && g.t > 10) { const bar = el("div", "prog"), fill = el("i"); fill.style.setProperty("--p", Math.min(1, g.t / g.d)); bar.append(fill); th.append(bar); }
     b.append(th, el("div", "ctitle", m.title), el("div", "cmeta", fmtSize(m.size)));
     b.onclick = () => void openMovie(m, th);
     return b;
@@ -944,9 +1010,9 @@
     for (const [folder, ms] of byFolder(items)) {
       const s = el("section"), grid = el("div", "igrid");
       for (const m of ms) {
-        const idx = n++, t = el("button", "tile reveal" + (idx % 9 === 4 ? " wide" : "")), img = el("img");
-        t.style.setProperty("--d", (idx % 10) * 45 + "ms"); t.setAttribute("aria-label", "Open " + m.title);
-        img.loading = "lazy"; img.alt = m.title; img.src = thumb(m); imgIn(img, m, true);
+        const idx = n++, t = el("button", "tile reveal" + (idx % 9 === 4 ? " wide" : "")), img = mkImg(m, 0, true);
+        t.style.setProperty("--d", (idx % 10) * 40 + "ms"); t.dataset.amb = "1"; t.setAttribute("aria-label", "Open " + m.title);
+        img.loading = "lazy"; img.alt = m.title;
         t.append(img); tileFor.set(m, t);
         t.onclick = () => openLightbox(items, idx, t);
         grid.append(t);
@@ -995,7 +1061,7 @@
   }
   function fileRow(r, path, i, flat) {
     const dir = r.kind === "dir", a = el("a", "frow reveal" + (dir ? " dir" : ""));
-    a.style.setProperty("--d", Math.min(i, 10) * 40 + "ms");
+    a.style.setProperty("--d", Math.min(i, 10) * 35 + "ms");
     if (dir) a.href = "#/files/" + enc(path ? path + "/" + r.name : r.name);
     else { a.href = dlUrl(r.f); a.setAttribute("download", r.f.name); }
     const fi = el("span", "fi"); fi.append(ic(dir ? "folder" : r.f.cat === "images" ? "image" : r.f.cat ? "video" : "file"));
@@ -1007,59 +1073,6 @@
       el("span", "fdate", dir ? "" : new Date(r.f.mtime * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })), go);
     return a;
   }
-
-  // light follows the pointer over any card, tile or portal
-  $("view").addEventListener("pointermove", e => {
-    const c = e.target.closest(".card,.tile");
-    if (!c) return;
-    const r = c.getBoundingClientRect();
-    c.style.setProperty("--mx", e.clientX - r.left + "px"); c.style.setProperty("--my", e.clientY - r.top + "px");
-  });
-
-  // ---- ambient: pointer parallax on the light, and dust motes that glow inside the two beams ----
-  (function ambient() {
-    const stage = $("stage"), cv = $("dust"), g = cv.getContext("2d");
-    if (!g) return;
-    const dpr = Math.min(devicePixelRatio || 1, 1.5);
-    let w = 0, h = 0, ps = [], last = 0;
-    const seed = () => {
-      w = innerWidth; h = innerHeight; cv.width = w * dpr; cv.height = h * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ps = Array.from({ length: clamp(Math.round(w / 16), 28, 90) }, () => ({
-        x: Math.random() * w, y: Math.random() * h, r: 0.6 + Math.random() * 1.5,
-        vx: (Math.random() - 0.5) * 0.05, vy: -(0.015 + Math.random() * 0.08), a: 0.25 + Math.random() * 0.5, p: Math.random() * 6.28 }));
-    };
-    const lit = (x, y) => {   // 0..1: how deep inside a beam cone this point is (cones widen towards the bottom)
-      let m = 0;
-      for (const cx of [0.38, 0.72]) m = Math.max(m, 1 - Math.abs(x - cx * w) / (0.05 * w + y * 0.18));
-      return Math.max(0, m);
-    };
-    const paint = step => {
-      g.clearRect(0, 0, w, h);
-      for (const p of ps) {
-        if (step) {
-          p.x += p.vx * step; p.y += p.vy * step; p.p += 0.02;
-          if (p.y < -4) { p.y = h + 4; p.x = Math.random() * w; }
-          if (p.x < -4) p.x = w + 4; else if (p.x > w + 4) p.x = -4;
-        }
-        const a = p.a * (0.18 + 1.5 * lit(p.x, p.y)) * (0.75 + 0.25 * Math.sin(p.p));
-        g.fillStyle = `rgba(255,222,176,${Math.min(a, 0.85).toFixed(3)})`;
-        g.beginPath(); g.arc(p.x, p.y, p.r, 0, 6.2832); g.fill();
-      }
-    };
-    const loop = t => { requestAnimationFrame(loop); if (t - last < 33) return; paint((t - last) / 16); last = t; };
-    seed(); addEventListener("resize", seed);
-    if (reduced()) { paint(0); return; }   // one still frame
-    requestAnimationFrame(loop);
-    let raf = 0;
-    addEventListener("pointermove", e => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        stage.style.setProperty("--bx", ((e.clientX / innerWidth - 0.5) * 2).toFixed(3));
-        stage.style.setProperty("--by", ((e.clientY / innerHeight - 0.5) * 2).toFixed(3));
-      });
-    }, { passive: true });
-  })();
 
   async function init() {
     const boot = el("div", "boot"); boot.append(el("span", "", "Cinema"));
