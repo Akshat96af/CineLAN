@@ -367,6 +367,7 @@
       document.body.classList.add("noscroll");
       void playerEl.offsetWidth; playerEl.classList.add("open");
       pinchK = 1;
+      applyAmb();   // glow(false) on the last close cleared the layers
       launchIn(playerFrom);
     }
     cur = m; tr = EMPTY; compat = false; burn = null; off = 0; cues = []; sub = { kind: "off" }; loopA = loopB = null;
@@ -674,6 +675,7 @@
     video.style.objectFit = zoomMode === "stretch" ? "fill" : "contain";
     var k = (zoomMode === "stretch" ? 1 : zoomScale()) * pinchK;
     video.style.transform = k > 1.001 ? "scale(" + k.toFixed(4) + ")" : "";
+    if (typeof layoutAmb === "function" && mirA) { layoutAmb(); syncMir(); }   // the bars change size with zoom, so the light follows
   }
   function setZoom(mode) {
     zoomMode = mode; pinchK = 1; store.set("zoom", mode); applyZoom();
