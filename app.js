@@ -230,6 +230,9 @@
     }
     cur = m; tr = EMPTY; compat = false; burn = null; off = 0; cues = []; sub = { kind: "off" }; loopA = loopB = null;
     $("ptitle").textContent = m.title;
+    const tc = $("tcard");   // cinematic title card: fades in over the picture, then lifts away
+    tc.firstElementChild.textContent = m.title; tc.classList.remove("play"); void tc.offsetWidth;
+    if (!reduced()) tc.classList.add("play");
     $("compat").classList.remove("on");
     hideMenu(); renderCue(true);
     $("next").hidden = !nextOf(m);
@@ -477,7 +480,8 @@
   }
   requestAnimationFrame(frame);
 
-  const setPlayIcon = () => { setIc($("play"), video.paused ? "play" : "pause"); $("play").setAttribute("aria-label", video.paused ? "Play" : "Pause"); };
+  const popIc = n => { n.classList.remove("pop"); void n.offsetWidth; n.classList.add("pop"); };   // restart the icon pop animation
+  const setPlayIcon = () => { setIc($("play"), video.paused ? "play" : "pause"); popIc($("play")); $("play").setAttribute("aria-label", video.paused ? "Play" : "Pause"); };
   const toggle = () => { void (video.paused ? video.play().catch(() => undefined) : video.pause()); };
 
   video.addEventListener("timeupdate", tick);
@@ -733,7 +737,7 @@
     : null;
   const armReveal = root => root.querySelectorAll(".reveal").forEach(n => (io ? io.observe(n) : n.classList.add("on")));
   const imgIn = (img, m, fallbackNative) => {   // blur-up reveal; SVG and friends fall back to the original file
-    img.onload = () => img.classList.add("ok");
+    img.onload = () => { img.classList.add("ok"); img.parentElement?.classList.add("ready"); };   // "ready" stops the shimmer placeholder
     img.onerror = () => { if (fallbackNative && IMG_NATIVE.has(m.ext) && !img.dataset.fb) { img.dataset.fb = 1; img.src = `${BASE}/${enc(m.path)}`; } else img.remove(); };
   };
 
@@ -745,16 +749,26 @@
     return { sec: i < 0 ? h : h.slice(0, i), path };
   };
 
-  let routed = null;
+  let routed = null, prevDepth = 0;
+  const depthOf = (sec, path) => SECTIONS[sec] ? 1 + (sec === "files" ? path.split("/").filter(Boolean).length : 0) : 0;
   function route(first) {
     routed = location.hash;
     const { sec, path } = parseHash();
+    const depth = depthOf(sec, path), nav = depth < prevDepth ? "back" : "fwd";   // deeper = camera pushes in, shallower = pulls back
+    prevDepth = depth;
     let ran = false;
     const build = () => { if (ran) return; ran = true; if (SECTIONS[sec]) showSection(sec, path); else showLanding(); window.scrollTo(0, 0); };
-    if (first || reduced() || !document.startViewTransition) { build(); if (!first) $("view").firstElementChild?.classList.add("enter"); return; }
-    const vt = document.startViewTransition(build);
-    vt.ready.catch(() => { /* skipped or aborted: harmless */ }); vt.finished.catch(() => { });
-    setTimeout(build, 1200);   // the callback waits for a painted frame; never leave the page on the old view if none comes
+    if (first || reduced()) return build();
+    document.documentElement.dataset.nav = nav;
+    if (document.startViewTransition) {
+      const vt = document.startViewTransition(build);
+      vt.ready.catch(() => { /* skipped or aborted: harmless */ }); vt.finished.catch(() => { });
+      setTimeout(build, 1500);   // the callback waits for a painted frame; never leave the page on the old view if none comes
+      return;
+    }
+    const view = $("view");   // no View Transitions: the same push / pull choreography with plain CSS animations
+    view.className = "leaving-" + nav;
+    setTimeout(() => { build(); view.className = "entering-" + nav; setTimeout(() => { view.className = ""; }, 1100); }, 480);
   }
 
   function errorPanel() {
@@ -795,7 +809,8 @@
     const step = t => {
       if (!node.isConnected) return;
       const k = clamp((t - t0) / dur, 0, 1);
-      node.textContent = `${Math.round(n * (1 - Math.pow(1 - k, 4))).toLocaleString()} ${unit[1]}`;
+      const v = Math.round(n * (1 - Math.pow(1 - k, 4)));
+      node.textContent = `${v.toLocaleString()} ${v === 1 ? unit[0] : unit[1]}`;
       if (k < 1) requestAnimationFrame(step); else done();
     };
     requestAnimationFrame(step);
@@ -867,7 +882,11 @@
     $("search").value = ""; $("search").placeholder = `Search ${SECTIONS[sec].title.toLowerCase()}`;
     const S = SECTIONS[sec], wrap = el("section", "sect"), head = el("div", "sect-head"), body = el("div", "sect-body");
     const n = S.list().length;
-    head.append(el("h1", "", S.title), el("p", "", libError ? "Offline" : `${n.toLocaleString()} ${n === 1 ? S.unit[0] : S.unit[1]}`));
+    const h1 = el("h1"), word = el("span", "w"), label = el("span", "", S.title);   // same masked word reveal as the landing headline
+    word.append(label); h1.append(word);
+    const sub = el("p", "rise", libError ? "Offline" : `${n.toLocaleString()} ${n === 1 ? S.unit[0] : S.unit[1]}`);
+    sub.style.setProperty("--i", 2);
+    head.append(h1, sub);
     head.style.viewTransitionName = "portal";
     wrap.append(head, body);
     $("view").replaceChildren(wrap);
@@ -996,6 +1015,51 @@
     const r = c.getBoundingClientRect();
     c.style.setProperty("--mx", e.clientX - r.left + "px"); c.style.setProperty("--my", e.clientY - r.top + "px");
   });
+
+  // ---- ambient: pointer parallax on the light, and dust motes that glow inside the two beams ----
+  (function ambient() {
+    const stage = $("stage"), cv = $("dust"), g = cv.getContext("2d");
+    if (!g) return;
+    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    let w = 0, h = 0, ps = [], last = 0;
+    const seed = () => {
+      w = innerWidth; h = innerHeight; cv.width = w * dpr; cv.height = h * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ps = Array.from({ length: clamp(Math.round(w / 16), 28, 90) }, () => ({
+        x: Math.random() * w, y: Math.random() * h, r: 0.6 + Math.random() * 1.5,
+        vx: (Math.random() - 0.5) * 0.05, vy: -(0.015 + Math.random() * 0.08), a: 0.25 + Math.random() * 0.5, p: Math.random() * 6.28 }));
+    };
+    const lit = (x, y) => {   // 0..1: how deep inside a beam cone this point is (cones widen towards the bottom)
+      let m = 0;
+      for (const cx of [0.38, 0.72]) m = Math.max(m, 1 - Math.abs(x - cx * w) / (0.05 * w + y * 0.18));
+      return Math.max(0, m);
+    };
+    const paint = step => {
+      g.clearRect(0, 0, w, h);
+      for (const p of ps) {
+        if (step) {
+          p.x += p.vx * step; p.y += p.vy * step; p.p += 0.02;
+          if (p.y < -4) { p.y = h + 4; p.x = Math.random() * w; }
+          if (p.x < -4) p.x = w + 4; else if (p.x > w + 4) p.x = -4;
+        }
+        const a = p.a * (0.18 + 1.5 * lit(p.x, p.y)) * (0.75 + 0.25 * Math.sin(p.p));
+        g.fillStyle = `rgba(255,222,176,${Math.min(a, 0.85).toFixed(3)})`;
+        g.beginPath(); g.arc(p.x, p.y, p.r, 0, 6.2832); g.fill();
+      }
+    };
+    const loop = t => { requestAnimationFrame(loop); if (t - last < 33) return; paint((t - last) / 16); last = t; };
+    seed(); addEventListener("resize", seed);
+    if (reduced()) { paint(0); return; }   // one still frame
+    requestAnimationFrame(loop);
+    let raf = 0;
+    addEventListener("pointermove", e => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        stage.style.setProperty("--bx", ((e.clientX / innerWidth - 0.5) * 2).toFixed(3));
+        stage.style.setProperty("--by", ((e.clientY / innerHeight - 0.5) * 2).toFixed(3));
+      });
+    }, { passive: true });
+  })();
 
   async function init() {
     const boot = el("div", "boot"); boot.append(el("span", "", "Cinema"));

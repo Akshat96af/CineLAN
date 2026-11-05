@@ -9,7 +9,13 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body data-view="boot">
-<div id="beam" aria-hidden="true"></div>
+<div id="stage" aria-hidden="true">
+  <div class="glow g1"></div><div class="glow g2"></div>
+  <div class="beam b1"></div><div class="beam b2"></div>
+  <canvas id="dust"></canvas>
+  <div class="streak"></div>
+  <div class="vignette"></div>
+</div>
 <div id="grain" aria-hidden="true"></div>
 
 <div id="app">
@@ -37,6 +43,7 @@
 
 <div id="player" hidden>
   <video id="video" playsinline></video>
+  <div id="tcard" aria-hidden="true"><span></span></div>
   <div id="cap"></div>
   <div id="spinner" hidden aria-label="Loading"></div>
   <div class="bar top">
