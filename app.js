@@ -104,6 +104,12 @@
     zoom: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M11 8.5v5M8.5 11h5"/>',
     restart: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/>',
     home: '<path d="M4 10.5L12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z"/>',
+    music: '<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
+    prev: '<path d="M18 5.5v13l-9-6.5z" fill="currentColor" stroke="none"/><path d="M5.5 5v14"/>',
+    shuffle: '<path d="M4 7h3c4.5 0 5.5 10 10 10h3M17 14l3 3-3 3M4 17h3c1.6 0 2.7-1.3 3.6-3M13.4 10c.9-1.7 2-3 3.6-3h3M17 4l3 3-3 3"/>',
+    repeat: '<path d="M5 11V9a3 3 0 0 1 3-3h11M16 3l3 3-3 3M19 13v2a3 3 0 0 1-3 3H5M8 21l-3-3 3-3"/>',
+    repeat1: '<path d="M5 11V9a3 3 0 0 1 3-3h11M16 3l3 3-3 3M19 13v2a3 3 0 0 1-3 3H5M8 21l-3-3 3-3"/><text x="12" y="14.6" font-size="6.5" text-anchor="middle" fill="currentColor" stroke="none" font-weight="700">1</text>',
+    down: '<path d="M6 9l6 6 6-6"/>',
     check: '<path d="M5 12.5l4.2 4.2L19 7"/>',
     expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="8.5" y="8.5" width="7" height="7" rx="1.5"/>',
   };
@@ -114,6 +120,19 @@
     return s;
   };
   var setIc = function (node, name) { setKids(node, [ic(name)]); };
+  // play / pause as one shape that morphs (two quads each, so the CSS `d` transition can interpolate); returns a setter
+  var PLAY_D = "M8 5.5L13.5 8.75L13.5 15.25L8 18.5Z M13.5 8.75L19 12L19 12L13.5 15.25Z";
+  var PAUSE_D = "M6.5 5L10.5 5L10.5 19L6.5 19Z M13.5 5L17.5 5L17.5 19L13.5 19Z";
+  function makeMorph(btn) {
+    var s = ic(""), p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("class", "pp"); p.setAttribute("d", PLAY_D); s.appendChild(p);
+    setKids(btn, [s]); btn.classList.add("morph", "is-paused");
+    return function (paused) {
+      p.setAttribute("d", paused ? PLAY_D : PAUSE_D);   // fallback where CSS `d` is unsupported
+      btn.classList.toggle("is-paused", paused);
+      btn.setAttribute("aria-label", paused ? "Play" : "Pause");
+    };
+  }
   Array.prototype.slice.call(document.querySelectorAll("[data-ic]")).forEach(function (n) { n.parentNode.replaceChild(ic(n.getAttribute("data-ic")), n); });
 
   // ---- library --------------------------------------------------------------
@@ -121,9 +140,12 @@
   var NATIVE_VIDEO = ["mp4", "m4v", "mov", "webm", "ogv"];   // everything else plays through the ffmpeg stream
   var IMG_EXT = ["jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp", "avif", "svg", "heic", "heif", "tif", "tiff"];
   var IMG_NATIVE = ["jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp", "avif", "svg"];
+  var AUDIO_EXT = ["mp3", "flac", "wav", "m4a", "aac", "ogg", "oga", "opus", "wma", "aiff", "aif", "ape", "alac", "wv"];
+  var AUDIO_NATIVE = ["mp3", "flac", "wav", "m4a", "aac", "ogg", "oga", "opus"];   // the rest are converted to MP3 by the server
   var has = function (list, x) { return list.indexOf(x) >= 0; };
 
-  var files = [], movies = [], videos = [], images = [];
+  var files = [], movies = [], videos = [], images = [], songs = [];
+  var covers = {};   // folder -> its cover image (cover.jpg, folder.jpg, front.png...), used when a song has no embedded art
   var libError = "";   // "", "launcher" (https page, plain-http PC), or a message
   var natural = function (a, b) { return a.path.localeCompare(b.path, undefined, { numeric: true }); };
   var extOf = function (n) { var i = n.lastIndexOf("."); return i < 0 ? "" : n.slice(i + 1).toLowerCase(); };
@@ -147,12 +169,17 @@
         return r.json();
       }).then(function (rows) {
         files = rows.map(toEntry).sort(natural);
-        movies = []; videos = []; images = [];
+        movies = []; videos = []; images = []; songs = []; covers = {};
         files.forEach(function (f) {
           if (f.ext === "mkv") { f.cat = "movies"; movies.push(f); }
           else if (has(VIDEO_EXT, f.ext)) { f.cat = "videos"; videos.push(f); }
           else if (has(IMG_EXT, f.ext)) { f.cat = "images"; images.push(f); }
+          else if (has(AUDIO_EXT, f.ext)) { f.cat = "music"; songs.push(f); }
         });
+        var named = /^(cover|folder|front|album|albumart)\b/i, musicDirs = {};
+        songs.forEach(function (s) { musicDirs[s.folder] = 1; });
+        images.forEach(function (f) { if (musicDirs[f.folder] && named.test(f.name) && !covers[f.folder]) covers[f.folder] = f; });
+        images.forEach(function (f) { if (musicDirs[f.folder] && !covers[f.folder]) covers[f.folder] = f; });   // any picture beside the songs will do
         libError = "";
       }).catch(function () {
         libError = "Check that the PC is on and server.py is running at " + (BASE || location.origin) + ".";
@@ -163,10 +190,11 @@
   var SECTIONS = {
     movies: { title: "Movies", icon: "film", unit: ["title", "titles"], list: function () { return movies; }, empty: "No MKV movies in this folder." },
     videos: { title: "Videos", icon: "video", unit: ["video", "videos"], list: function () { return videos; }, empty: "No videos in this folder." },
+    music: { title: "Music", icon: "music", unit: ["track", "tracks"], list: function () { return songs; }, empty: "No music in this folder." },
     images: { title: "Images", icon: "image", unit: ["photo", "photos"], list: function () { return images; }, empty: "No images in this folder." },
     files: { title: "Files", icon: "folder", unit: ["file", "files"], list: function () { return files; }, empty: "This folder is empty." },
   };
-  var ORDER = ["movies", "videos", "images", "files"];
+  var ORDER = ["movies", "videos", "music", "images", "files"];
 
   var getProg = function (p) { try { var s = store.get("pos:" + p); return s ? JSON.parse(s) : null; } catch (e) { return null; } };
   var resumable = function (g) { return !!g && g.t > 10 && g.t < g.d * 0.95; };
@@ -230,7 +258,7 @@
   function requestClose() { if (pushed) history.back(); else forceClose(); }
   function forceClose() {
     var k = overlay; overlay = null; pushed = false;
-    if (k === "player") doClosePlayer(); else if (k === "lb") doCloseLb();
+    if (k === "player") doClosePlayer(); else if (k === "lb") doCloseLb(); else if (k === "np") doCloseNp();
   }
   // popstate: back/forward and overlays. hashchange: some browsers only fire this for #links. route() skips a hash it already shows.
   var onNav = function () { if (overlay) { pushed = false; forceClose(); } else if (location.hash !== routed) route(); };
@@ -367,6 +395,7 @@
       document.body.classList.add("noscroll");
       void playerEl.offsetWidth; playerEl.classList.add("open");
       pinchK = 1;
+      if (!au.paused) { wantPlay = false; au.pause(); }   // the film takes over; the music waits in the dock
       applyAmb();   // glow(false) on the last close cleared the layers
       launchIn(playerFrom);
     }
@@ -405,6 +434,7 @@
     launchOut(playerFrom, function () {
       playerEl.hidden = true; playerEl.classList.remove("closing", "live", "open"); resetLaunch();
       video.removeAttribute("src"); video.load(); refreshSection();
+      if (curTrack()) musicSession();   // hand the lock-screen controls back to the music
       if (playerFrom && playerFrom.isConnected && TV) { var c = playerFrom.closest(".card, a, button"); if (c) c.focus(); }
     });
   }
@@ -860,18 +890,8 @@
   }
   applyAmb();
 
-  // play / pause is one shape that morphs (two quads each, so the CSS `d` transition can interpolate)
-  var PLAY_D = "M8 5.5L13.5 8.75L13.5 15.25L8 18.5Z M13.5 8.75L19 12L19 12L13.5 15.25Z";
-  var PAUSE_D = "M6.5 5L10.5 5L10.5 19L6.5 19Z M13.5 5L17.5 5L17.5 19L13.5 19Z";
-  var ppIcon = ic(""), ppPath = document.createElementNS(SVGNS, "path");
-  ppPath.setAttribute("class", "pp"); ppPath.setAttribute("d", PLAY_D); ppIcon.appendChild(ppPath);
-  setKids($("play"), [ppIcon]); $("play").classList.add("is-paused");
-  var setPlayIcon = function () {
-    var p = video.paused;
-    ppPath.setAttribute("d", p ? PLAY_D : PAUSE_D);   // fallback where CSS `d` is unsupported
-    $("play").classList.toggle("is-paused", p);
-    $("play").setAttribute("aria-label", p ? "Play" : "Pause");
-  };
+  var playMorph = makeMorph($("play"));
+  var setPlayIcon = function () { playMorph(video.paused); };
   var bezelEl = $("bezel");
   function bezel(name) {   // a brief confirmation in the middle of the picture
     if (reduced()) return;
@@ -1210,16 +1230,375 @@
   $("lb-zoom").onclick = function () { lbZoom(lb.z > 1 ? 1 : 2.5, 0, 0); };
 
   // ===========================================================================
+  // MUSIC: a dock that keeps playing while you browse, and a Now Playing sheet
+  // ===========================================================================
+  // MP3 / FLAC / WAV / M4A / OGG / Opus play natively (full quality, instant seeking). Anything the browser can't decode is
+  // converted to MP3 by the server, and seeking then restarts that stream at an offset, exactly like converted films.
+  var au = $("audio"), dock = $("dock"), np = $("np"), npSheet = $("npSheet"), npSeekEl = $("npSeek");
+  var queue = [], order = [], pos = -1;
+  var shuffleOn = store.get("mshuf") === "1", repeatMode = store.get("mrep") || "off";
+  var mConv = false, mOff = 0, mDur = 0, mTags = null, mSaved = 0, mPos = 0, wantPlay = false, failStreak = 0;
+  var npOpen = false, npScrub = false, npDrag = null, npSettle = null;
+  var dkPlay = makeMorph($("dkPlay")), npPlay = makeMorph($("npPlay"));
+  var curTrack = function () { return pos >= 0 && pos < order.length ? queue[order[pos]] : null; };
+  var mNow = function () { return mOff + (au.currentTime || 0); };
+  var mDuration = function () { return mConv ? mDur : (isFinite(au.duration) && au.duration > 0 ? au.duration : mDur); };
+  var albumOf = function (s) { return s.folder ? s.folder.split("/").pop() : "Music"; };
+  var trackTitle = function (s) { return (mTags && curTrack() === s && mTags.title) || s.title; };
+  var trackArtist = function (s) { var t = mTags && curTrack() === s ? mTags : null; return (t && (t.artist || t.album_artist)) || albumOf(s); };
+
+  function coverEl(s, w) {   // embedded artwork, else the album folder's cover image, else a quiet placeholder
+    var c = el("span", "cov");
+    c.appendChild(ic("music"));
+    if (!s) return c;
+    var img = el("img"), fc = covers[s.folder];
+    img.alt = ""; img.crossOrigin = "anonymous"; img.decoding = "async";
+    img.onload = function () { img.classList.add("ok"); };
+    img.onerror = function () {
+      if (fc && !img.getAttribute("data-fb")) { img.setAttribute("data-fb", "1"); img.src = thumb(fc, w); }
+      else if (img.parentNode) img.parentNode.removeChild(img);
+    };
+    img.src = thumb(s, w);
+    c.appendChild(img);
+    return c;
+  }
+  function eqEl() { var e = el("span", "eq"); e.appendChild(el("i")); e.appendChild(el("i")); e.appendChild(el("i")); return e; }
+
+  function buildOrder(start) {
+    order = queue.map(function (_, i) { return i; });
+    if (!shuffleOn) { pos = start; return; }
+    for (var i = order.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), x = order[i]; order[i] = order[j]; order[j] = x; }
+    order.splice(order.indexOf(start), 1); order.unshift(start); pos = 0;   // the chosen track first, the rest shuffled
+  }
+  function playQueue(list, start, shuffle) {
+    if (!list.length) return;
+    queue = list.slice();
+    if (shuffle !== undefined) { shuffleOn = shuffle; store.set("mshuf", shuffle ? "1" : "0"); }
+    buildOrder(shuffle ? Math.floor(Math.random() * list.length) : start);
+    failStreak = 0;
+    loadTrack(true, 0);
+  }
+  function setSrc(s, t) {
+    mOff = mConv ? t : 0;
+    au.src = mConv ? BASE + "/audio/" + enc(s.path) + "?t=" + t : BASE + "/" + enc(s.path);
+    if (!mConv && t > 0) { var at = function () { au.removeEventListener("loadedmetadata", at); au.currentTime = t; }; au.addEventListener("loadedmetadata", at); }
+  }
+  function playAudio() {
+    if (cur || !curTrack()) return;   // a film is open: it has the stage
+    wantPlay = true;
+    var p = au.play();
+    if (p && p.catch) p.catch(function () { /* blocked until the next tap */ });
+  }
+  function loadTrack(autoplay, t) {
+    var s = curTrack();
+    if (!s) return;
+    mConv = !has(AUDIO_NATIVE, s.ext); mTags = null; mDur = 0;
+    setSrc(s, t || 0);
+    if (autoplay) playAudio(); else wantPlay = false;
+    paintTrack(); saveMusic(true);
+    fetch(BASE + "/api/tracks/" + enc(s.path)).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }).then(function (info) {
+      if (curTrack() !== s || !info) return;
+      mTags = info.tags || null; mDur = info.duration || 0;
+      var a = info.audio && info.audio[0];
+      if (!mConv && a && /^(alac|ape|wmav\d|wavpack)$/.test(a.codec)) {   // a familiar container holding a codec browsers lack
+        var at = mNow(), go = wantPlay; mConv = true; setSrc(s, at); if (go) playAudio();
+      }
+      paintTrack(); musicSession();
+    });
+  }
+  function mSeek(t) {
+    var s = curTrack();
+    if (!s) return;
+    var d = mDuration();
+    t = clamp(t, 0, d || Math.max(t, 0));
+    if (!mConv) { au.currentTime = t; paintTime(); return; }
+    var go = !au.paused || wantPlay;
+    setSrc(s, t); if (go) playAudio();
+    paintTime();
+  }
+  function mNext(auto) {
+    if (!order.length) return;
+    if (auto && repeatMode === "one") { mSeek(0); playAudio(); return; }
+    var go = auto || !au.paused;
+    if (pos + 1 < order.length) pos++;
+    else if (repeatMode === "all") pos = 0;
+    else { if (auto) { wantPlay = false; paintPlay(); } return; }   // end of the queue: stop on the last track
+    loadTrack(go, 0);
+  }
+  function mPrev() {
+    if (!order.length) return;
+    if (mNow() > 3 || pos === 0) { mSeek(0); return; }   // like every player: first press restarts the song
+    pos--; loadTrack(!au.paused, 0);
+  }
+  function toggleMusic() {
+    if (!curTrack()) return;
+    if (au.paused) playAudio(); else { wantPlay = false; au.pause(); }
+  }
+  function toggleShuffle() {
+    var s = curTrack();
+    shuffleOn = !shuffleOn; store.set("mshuf", shuffleOn ? "1" : "0");
+    if (s) buildOrder(queue.indexOf(s));   // the current song keeps playing; only what comes next changes
+    paintModes(); renderQueue(); saveMusic(true);
+    toast(shuffleOn ? "Shuffle on" : "Shuffle off");
+  }
+  function cycleRepeat() {
+    repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
+    store.set("mrep", repeatMode); paintModes();
+    toast(repeatMode === "off" ? "Repeat off" : repeatMode === "all" ? "Repeat all" : "Repeat this song");
+  }
+
+  // ---- painting ----
+  function paintTrack() {
+    var s = curTrack();
+    dock.hidden = !s; document.body.classList.toggle("has-dock", !!s);
+    if (!s) return;
+    var t = el("span", "t", trackTitle(s));
+    setKids($("dkTitle"), [t, eqEl()]);
+    $("dkArtist").textContent = trackArtist(s);
+    if (dock.getAttribute("data-path") !== s.path) {   // new song: new artwork, and the room takes its colour
+      dock.setAttribute("data-path", s.path);
+      setKids($("dkCov"), [coverEl(s, 160)]);
+      var big = coverEl(s, 900), img = big.querySelector("img");
+      if (img) img.addEventListener("load", function () { var c = dominant(img); if (c) $("npBg").style.setProperty("--c", c); });
+      setKids($("npCov"), [big]);
+    }
+    $("npTitle").textContent = trackTitle(s);
+    $("npArtist").textContent = trackArtist(s);
+    $("npAlbum").textContent = (mTags && mTags.album) || "";
+    $("npFmt").textContent = s.ext.toUpperCase();
+    $("npSrc").textContent = s.folder || "Music";
+    paintModes(); paintPlay(); paintTime(); renderQueue();
+  }
+  function paintPlay() {
+    var p = au.paused;
+    dkPlay(p); npPlay(p);
+    dock.classList.toggle("paused", p); np.classList.toggle("paused", p);
+    markPlaying();
+  }
+  function paintModes() {
+    $("npShuf").classList.toggle("on", shuffleOn); $("npShuf").setAttribute("aria-pressed", String(shuffleOn));
+    setIc($("npRep"), repeatMode === "one" ? "repeat1" : "repeat");
+    $("npRep").classList.toggle("on", repeatMode !== "off");
+    $("npRep").setAttribute("aria-label", repeatMode === "off" ? "Repeat: off" : repeatMode === "all" ? "Repeat: all" : "Repeat: this song");
+    var last = pos >= order.length - 1 && repeatMode === "off";
+    $("dkNext").disabled = last; $("npNext").disabled = last;
+  }
+  function paintTime() {
+    var d = mDuration(), t = mNow(), r = d ? clamp(t / d, 0, 1) : 0;
+    $("dkBar").style.transform = "scaleX(" + r + ")";
+    if (!npOpen || npScrub) return;
+    $("npBar").style.transform = "scaleX(" + r + ")";
+    $("npKnob").style.setProperty("--kx", r * npSeekEl.clientWidth + "px");
+    $("npCur").textContent = fmt(t);
+    $("npLeft").textContent = d ? "−" + fmt(Math.max(0, d - t)) : "0:00";
+  }
+  function markPlaying() {   // the playing row in the Music page and the queue shows moving bars
+    var s = curTrack(), p = au.paused;
+    Array.prototype.forEach.call(document.querySelectorAll(".trow"), function (r) {
+      var on = !!s && r.getAttribute("data-path") === s.path;
+      r.classList.toggle("now", on); r.classList.toggle("paused", on && p);
+    });
+    var q = document.querySelector(".qrow.now");
+    if (q) q.classList.toggle("paused", p);
+  }
+  function renderQueue() {
+    if (!npOpen) return;
+    var rows = [];
+    for (var i = pos; i >= 0 && i < Math.min(order.length, pos + 60); i++) (function (p) {
+      var s = queue[order[p]], b = el("button", "qrow" + (p === pos ? " now" : "")), n = el("span", "qn mono");
+      if (p === pos) n.appendChild(eqEl()); else n.textContent = String(p - pos);
+      var tx = el("span", "qt"); tx.appendChild(el("b", "", s.title)); tx.appendChild(el("small", "", albumOf(s)));
+      b.appendChild(n); b.appendChild(tx); b.appendChild(el("span", "chip", s.ext.toUpperCase()));
+      b.onclick = function () { if (p === pos) return toggleMusic(); pos = p; failStreak = 0; loadTrack(true, 0); };
+      rows.push(b);
+    })(i);
+    setKids($("npList"), rows);
+    markPlaying();
+  }
+
+  // ---- remember the queue across reloads ----
+  function saveMusic(force) {
+    if (!curTrack() || (!force && Date.now() - mSaved < 5000)) return;
+    mSaved = Date.now();
+    store.set("music", JSON.stringify({ q: queue.slice(0, 3000).map(function (s) { return s.path; }), o: order, p: pos, t: mNow() }));
+  }
+  function restoreMusic() {
+    var m = null;
+    try { m = JSON.parse(store.get("music") || "null"); } catch (e) { m = null; }
+    if (!m || !m.q || !m.q.length) return;
+    var byPath = {};
+    songs.forEach(function (s) { byPath[s.path] = s; });
+    var q = m.q.map(function (p) { return byPath[p]; }), intact = q.every(Boolean) && m.o && m.o.length === q.length;
+    queue = q.filter(Boolean);
+    if (!queue.length) return;
+    if (intact) { order = m.o; pos = clamp(m.p || 0, 0, order.length - 1); }
+    else { order = queue.map(function (_, i) { return i; }); pos = 0; }   // the library changed: start the surviving songs from the top
+    loadTrack(false, intact ? m.t || 0 : 0);
+  }
+
+  // ---- lock screen / notification controls ----
+  function musicSession() {
+    var s = curTrack();
+    if (!s || cur || !("mediaSession" in navigator)) return;   // a film owns these while it's open
+    var ms = navigator.mediaSession, art = covers[s.folder] ? thumb(covers[s.folder], 512) : thumb(s, 512);
+    try { ms.metadata = new MediaMetadata({ title: trackTitle(s), artist: trackArtist(s), album: (mTags && mTags.album) || albumOf(s), artwork: [{ src: new URL(art, location.href).href, sizes: "512x512", type: "image/jpeg" }] }); }
+    catch (e) { /* MediaMetadata missing */ }
+    var set = function (a, f) { try { ms.setActionHandler(a, f); } catch (e) { /* not supported */ } };
+    set("play", playAudio);
+    set("pause", function () { wantPlay = false; au.pause(); });
+    set("previoustrack", mPrev);
+    set("nexttrack", function () { mNext(false); });
+    set("seekbackward", function (d) { mSeek(mNow() - (d && d.seekOffset || 10)); });
+    set("seekforward", function (d) { mSeek(mNow() + (d && d.seekOffset || 10)); });
+    set("seekto", function (d) { if (d && d.seekTime != null) mSeek(d.seekTime); });
+  }
+
+  // ---- audio events ----
+  au.addEventListener("timeupdate", function () {
+    paintTime(); saveMusic();
+    var d = mDuration();
+    if (d && !cur && "mediaSession" in navigator && navigator.mediaSession.setPositionState && Date.now() - mPos > 1000) {
+      mPos = Date.now();
+      try { navigator.mediaSession.setPositionState({ duration: d, position: clamp(mNow(), 0, d), playbackRate: 1 }); } catch (e) { /* ignore */ }
+    }
+  });
+  au.addEventListener("play", function () { paintPlay(); musicSession(); });
+  au.addEventListener("playing", function () { failStreak = 0; });
+  au.addEventListener("pause", function () { paintPlay(); saveMusic(true); });
+  au.addEventListener("loadedmetadata", paintTime);
+  au.addEventListener("ended", function () { mNext(true); });
+  au.addEventListener("error", function () {
+    var s = curTrack();
+    if (!s || !au.getAttribute("src")) return;
+    if (!mConv) { var at = mNow(), go = wantPlay; mConv = true; setSrc(s, at); if (go) playAudio(); return; }   // can't decode it here: let the PC convert it
+    failStreak++;
+    toast("Can't play " + s.title);
+    if (failStreak < queue.length) setTimeout(function () { if (curTrack() === s) mNext(true); }, 1200);   // skip on, but never loop forever
+  });
+  var mvol = parseFloat(store.get("mvol") || "1");
+  au.volume = isNaN(mvol) ? 1 : mvol; $("npVol").value = String(au.volume);
+  $("npVol").oninput = function () { au.volume = +$("npVol").value; store.set("mvol", $("npVol").value); };
+
+  // ---- controls ----
+  $("dkOpen").onclick = openNp;
+  $("dkPlay").onclick = toggleMusic;
+  $("dkPrev").onclick = mPrev;
+  $("dkNext").onclick = function () { mNext(false); };
+  $("npPlay").onclick = toggleMusic;
+  $("npPrev").onclick = mPrev;
+  $("npNext").onclick = function () { mNext(false); };
+  $("npShuf").onclick = toggleShuffle;
+  $("npRep").onclick = cycleRepeat;
+  $("npClose").onclick = requestClose;
+
+  // ---- the Now Playing sheet: slides up from the dock, swipe it down (or Back / Esc) to put it away ----
+  function openNp() {
+    if (!curTrack() || npOpen || overlay) return;
+    npOpen = true;
+    pushOverlay("np");
+    np.hidden = false; document.body.classList.add("noscroll");
+    npSheet.style.transform = ""; npSheet.scrollTop = 0;
+    np.getBoundingClientRect();
+    np.classList.add("show");
+    paintTrack();
+    if (TV || !FINE) setTimeout(function () { $("npPlay").focus({ preventScroll: true }); }, 80);
+  }
+  function doCloseNp() {
+    npOpen = false;
+    if (npSettle) { npSettle(); npSettle = null; }
+    np.classList.remove("show"); npSheet.style.transform = "";
+    document.body.classList.remove("noscroll");
+    setTimeout(function () { if (!npOpen) np.hidden = true; }, 500);
+    if (TV || !FINE) $("dkOpen").focus({ preventScroll: true });
+  }
+  var npRatio = function (e) { var r = npSeekEl.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width, 0, 1); };
+  var npPaintAt = function (r) {
+    var d = mDuration();
+    $("npBar").style.transform = "scaleX(" + r + ")";
+    $("npKnob").style.setProperty("--kx", r * npSeekEl.clientWidth + "px");
+    $("npCur").textContent = fmt(r * d);
+  };
+  npSeekEl.addEventListener("pointerdown", function (e) { npScrub = true; npSeekEl.setPointerCapture(e.pointerId); npSeekEl.classList.add("show"); npPaintAt(npRatio(e)); });
+  npSeekEl.addEventListener("pointermove", function (e) { if (npScrub) npPaintAt(npRatio(e)); });
+  npSeekEl.addEventListener("pointerup", function (e) { if (!npScrub) return; npScrub = false; npSeekEl.classList.remove("show"); mSeek(npRatio(e) * mDuration()); });
+  npSeekEl.addEventListener("pointercancel", function () { npScrub = false; npSeekEl.classList.remove("show"); paintTime(); });
+  [document.querySelector(".np-top"), $("npArt")].forEach(function (handle) {   // drag handles: the top bar and the artwork
+    handle.addEventListener("pointerdown", function (e) {
+      if (e.pointerType !== "touch" || e.target.closest("button")) return;
+      if (npSettle) { npSettle(); npSettle = null; }
+      npDrag = { y: e.clientY, ly: e.clientY, lt: Date.now(), vy: 0 };
+      handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener("pointermove", function (e) {
+      if (!npDrag) return;
+      var t = Date.now();
+      npDrag.vy = (e.clientY - npDrag.ly) / Math.max(1, t - npDrag.lt); npDrag.ly = e.clientY; npDrag.lt = t;
+      npSheet.style.transition = "none";
+      npSheet.style.transform = "translate3d(0," + Math.max(0, e.clientY - npDrag.y) + "px,0)";
+    });
+    var end = function (e) {
+      if (!npDrag) return;
+      var dy = Math.max(0, e.clientY - npDrag.y), vy = npDrag.vy;
+      npDrag = null; npSheet.style.transition = "";
+      if (dy > 120 || vy > 0.6) { buzz(6); requestClose(); return; }
+      npSheet.style.transition = "none";
+      npSettle = spring(dy, 0, vy * 1000, function (y) { npSheet.style.transform = "translate3d(0," + y + "px,0)"; },
+        function () { npSheet.style.transition = ""; npSheet.style.transform = ""; npSettle = null; });
+    };
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  });
+
+  // ---- the Music page: albums by folder, a track list per album ----
+  function renderMusic(body, items) {
+    byFolder(items).forEach(function (g, gi) {
+      var list = g[1], s = el("section", "album reveal"), headRow = el("div", "alb-head"), art = el("div", "alb-art"), info = el("div", "alb-info");
+      s.style.setProperty("--d", Math.min(gi, 6) * 60 + "ms");
+      art.appendChild(coverEl(list[0], 320));
+      info.appendChild(el("h2", "", g[0] ? g[0].split("/").pop() : "Library"));
+      if (g[0].indexOf("/") >= 0) info.appendChild(el("small", "", g[0]));   // the full path when albums are nested
+      info.appendChild(el("p", "", list.length + (list.length === 1 ? " track" : " tracks")));
+      var row = el("div", "row"), play = el("button", "pill primary"), bi = el("span", "bi"), shuf = el("button", "pill");
+      bi.appendChild(ic("play"));
+      play.appendChild(document.createTextNode("Play")); play.appendChild(bi);
+      shuf.appendChild(ic("shuffle")); shuf.appendChild(document.createTextNode("Shuffle"));
+      play.onclick = function () { playQueue(list, 0, false); };
+      shuf.onclick = function () { playQueue(list, 0, true); };
+      row.appendChild(play); row.appendChild(shuf); info.appendChild(row);
+      headRow.appendChild(art); headRow.appendChild(info); s.appendChild(headRow);
+      var tl = el("div", "tlist");
+      list.forEach(function (m, i) {
+        var r = el("button", "trow"), n = el("span", "tn mono"), tx = el("span", "tt");
+        r.setAttribute("data-path", m.path); r.setAttribute("aria-label", "Play " + m.title);
+        n.appendChild(el("span", "num", String(i + 1))); n.appendChild(eqEl());
+        tx.appendChild(el("b", "", m.title));
+        r.appendChild(n); r.appendChild(tx); r.appendChild(el("span", "chip", m.ext.toUpperCase())); r.appendChild(el("span", "tsize mono", fmtSize(m.size)));
+        r.onclick = function () { var c = curTrack(); if (c && c.path === m.path) return toggleMusic(); playQueue(list, i); };   // keeps your shuffle choice
+        tl.appendChild(r);
+      });
+      s.appendChild(tl); body.appendChild(s);
+    });
+    armReveal(body); markPlaying();
+  }
+  function musicFan() {   // album covers for the Music portal, topped up with format tiles
+    var out = [], seen = {}, exts = {};
+    songs.forEach(function (s) { if (out.length < 3 && covers[s.folder] && !seen[s.folder]) { seen[s.folder] = 1; out.push(mkImg(covers[s.folder], 480, false)); } });
+    songs.forEach(function (s) { exts[s.ext] = 1; });
+    Object.keys(exts).forEach(function (x) { if (out.length < 3) { var d = el("div", "doc"); d.appendChild(ic("music")); d.appendChild(el("span", "", x.toUpperCase())); out.push(d); } });
+    return out;
+  }
+
+  // ===========================================================================
   // D-PAD / KEYBOARD: spatial navigation for TV remotes, VLC-style player keys
   // ===========================================================================
-  var FOCUSABLE = 'a[href]:not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), input:not([type="hidden"]):not([tabindex="-1"])';
+  var FOCUSABLE = 'a[href]:not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), input:not([type="hidden"]):not([tabindex="-1"]), [tabindex="0"]';
   var visible = function (n) { var r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   function focusEl(n) {
     try { n.focus({ preventScroll: true }); } catch (e) { n.focus(); }
     try { n.scrollIntoView({ block: "nearest", inline: "nearest", behavior: reduced() ? "auto" : "smooth" }); } catch (e) { n.scrollIntoView(false); }
   }
   function spatial(dir) {   // move focus to the nearest element in that direction (edges first, then alignment)
-    var scope = lb.open ? lb.el : cur ? playerEl : $("app");
+    var scope = lb.open ? lb.el : cur ? playerEl : npOpen ? np : $("app");
     var all = Array.prototype.slice.call(scope.querySelectorAll(FOCUSABLE)).filter(visible);
     if (!all.length) return false;
     var a = document.activeElement;
@@ -1250,7 +1629,8 @@
   }
 
   var KEYNAMES = { 37: "arrowleft", 38: "arrowup", 39: "arrowright", 40: "arrowdown", 13: "enter", 27: "escape", 8: "backspace",
-    461: "goback", 10009: "goback", 415: "mediaplay", 19: "mediapause", 417: "mediafastforward", 412: "mediarewind", 413: "mediastop", 179: "mediaplaypause" };
+    461: "goback", 10009: "goback", 415: "mediaplay", 19: "mediapause", 417: "mediafastforward", 412: "mediarewind", 413: "mediastop", 179: "mediaplaypause",
+    176: "mediatracknext", 177: "mediatrackprevious", 178: "mediastop" };
   var DIRS = { arrowright: "right", arrowleft: "left", arrowup: "up", arrowdown: "down", right: "right", left: "left", up: "up", down: "down" };
   document.addEventListener("keydown", function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1268,6 +1648,12 @@
       if (k === "mediarewind") return done(), nudge(-30);
       if (k === "mediatracknext") return done(), playNext();
       if (k === "mediastop") return done(), requestClose();
+    } else if (curTrack()) {   // no film open: the same keys drive the music
+      if (k === "mediaplaypause") return done(), toggleMusic();
+      if (k === "mediaplay") return done(), playAudio();
+      if (k === "mediapause" || k === "mediastop") { wantPlay = false; au.pause(); return done(); }
+      if (k === "mediatracknext" || k === "mediafastforward") return done(), mNext(false);
+      if (k === "mediatrackprevious" || k === "mediarewind") return done(), mPrev();
     }
     // Back: TV remotes, Escape, Backspace outside text fields
     if (k === "goback" || k === "browserback" || (k === "backspace" && !typing) || k === "escape") {
@@ -1314,6 +1700,10 @@
       if (k === "]") return done(), stepSpeed(1);
       if (/^[0-9]$/.test(k)) return done(), seekTo(duration() * (+k / 10));
       return;
+    }
+    if (npOpen) {   // Now Playing: Space plays/pauses, left/right on the focused timeline seek
+      if (k === " " && !(t && t.closest && t.closest("button, input"))) return done(), toggleMusic();
+      if (t === npSeekEl && (dir === "left" || dir === "right")) return done(), mSeek(mNow() + (dir === "right" ? 10 : -10));
     }
     if (dir && spatial(dir)) done();   // pages: the remote moves between cards, rows and buttons
   });
@@ -1510,7 +1900,8 @@
     var a = el("a", "portal rise"); a.href = "#/" + sec; a.setAttribute("data-sec", sec); a.setAttribute("data-amb", "1"); a.style.setProperty("--i", i + 6);
     a.setAttribute("aria-label", S.title + ", " + list.length + " items");
     var fan = el("div", "fan");
-    (sec === "files" ? pickFiles() : pick(list, 3)).forEach(function (m) {
+    if (sec === "music") musicFan().forEach(function (n) { fan.appendChild(n); });
+    (sec === "files" ? pickFiles() : sec === "music" ? [] : pick(list, 3)).forEach(function (m) {
       if (sec === "files") {
         var d = el("div", "doc"); d.appendChild(ic("file")); d.appendChild(el("span", "", (m.ext || "file").toUpperCase().slice(0, 5)));
         fan.appendChild(d);
@@ -1593,7 +1984,9 @@
     if (sec === "files") return renderFiles(body, path, q);
     var list = SECTIONS[sec].list(), items = q ? list.filter(function (m) { return m.path.toLowerCase().indexOf(q) >= 0; }) : list;
     if (!items.length) return void body.appendChild(emptyPanel(q ? "Nothing matches your search." : SECTIONS[sec].empty));
-    if (sec === "images") renderImages(body, items); else renderVideos(body, items, !q);
+    if (sec === "images") renderImages(body, items);
+    else if (sec === "music") renderMusic(body, items);
+    else renderVideos(body, items, !q);
   }
 
   function byFolder(items) {
@@ -1690,7 +2083,7 @@
     a.style.setProperty("--d", Math.min(i, 10) * 35 + "ms");
     if (dir) a.href = "#/files/" + enc(path ? path + "/" + r.name : r.name);
     else { a.href = dlUrl(r.f); a.setAttribute("download", r.f.name); }
-    var fi = el("span", "fi"); fi.appendChild(ic(dir ? "folder" : r.f.cat === "images" ? "image" : r.f.cat ? "video" : "file"));
+    var fi = el("span", "fi"); fi.appendChild(ic(dir ? "folder" : r.f.cat === "images" ? "image" : r.f.cat === "music" ? "music" : r.f.cat ? "video" : "file"));
     var nm = el("span", "fname"); nm.appendChild(el("b", "", dir ? r.name : r.f.name));
     if (flat && !dir && r.f.folder) nm.appendChild(el("small", "", r.f.folder));
     var go = el("span", "fgo"); go.appendChild(ic(dir ? "fwd" : "download"));
@@ -1754,6 +2147,7 @@
     setTimeout(function () { $("bootbar").style.transform = "scaleX(.35)"; }, 60);
     loadLibrary().then(function () {
       $("bootbar").style.transform = "scaleX(.8)";
+      restoreMusic();   // last session's queue comes back paused in the dock
       openGate();
       var told = false;
       try { told = !!sessionStorage.getItem("rm-told"); } catch (e) { /* ignore */ }

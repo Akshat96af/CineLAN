@@ -29,7 +29,7 @@
       <a id="home" class="ib" href="#/" aria-label="Home"><i data-ic="home"></i></a>
       <div class="seg" id="seg">
         <span class="seg-thumb" id="segThumb" aria-hidden="true"></span>
-        <a href="#/movies" data-sec="movies">Movies</a><a href="#/videos" data-sec="videos">Videos</a><a href="#/images" data-sec="images">Images</a><a href="#/files" data-sec="files">Files</a>
+        <a href="#/movies" data-sec="movies">Movies</a><a href="#/videos" data-sec="videos">Videos</a><a href="#/music" data-sec="music">Music</a><a href="#/images" data-sec="images">Images</a><a href="#/files" data-sec="files">Files</a>
       </div>
       <label class="search" id="searchBox"><i data-ic="search"></i><input id="search" type="search" placeholder="Search" autocomplete="off" aria-label="Search"></label>
       <button id="server-btn" class="ib" aria-label="Server address"><i data-ic="gear"></i></button>
@@ -37,6 +37,51 @@
     <span id="ttl" hidden></span>
   </header>
   <main id="view"></main>
+  <!-- music dock: keeps playing while you browse -->
+  <div id="dock" hidden>
+    <div class="dk-prog"><i id="dkBar"></i></div>
+    <button id="dkOpen" aria-label="Open now playing"><span class="dk-cov" id="dkCov"></span><span class="dk-txt"><b id="dkTitle"></b><small id="dkArtist"></small></span></button>
+    <div class="dk-ctl">
+      <button id="dkPrev" class="ib" aria-label="Previous track"><i data-ic="prev"></i></button>
+      <button id="dkPlay" class="ib dk-play" aria-label="Play"><i data-ic="play"></i></button>
+      <button id="dkNext" class="ib" aria-label="Next track"><i data-ic="next"></i></button>
+    </div>
+  </div>
+</div>
+<audio id="audio" preload="auto"></audio>
+
+<div id="np" hidden>
+  <div class="np-bg" id="npBg"></div>
+  <div class="np-sheet" id="npSheet">
+    <div class="np-top">
+      <button id="npClose" class="icon-btn" aria-label="Close now playing"><i data-ic="down"></i></button>
+      <span class="np-src" id="npSrc"></span>
+      <span class="grow"></span>
+      <span class="chip" id="npFmt"></span>
+    </div>
+    <div class="np-main">
+      <div class="np-art" id="npArt"><span class="np-cov" id="npCov"></span></div>
+      <div class="np-meta">
+        <h2 id="npTitle"></h2>
+        <p id="npArtist"></p>
+        <p id="npAlbum"></p>
+        <div class="np-tl">
+          <span id="npCur" class="mono">0:00</span>
+          <div id="npSeek" class="np-seek" role="slider" aria-label="Seek" tabindex="0"><div class="trk"><i id="npBar"></i></div><i id="npKnob"></i></div>
+          <span id="npLeft" class="mono">0:00</span>
+        </div>
+        <div class="np-ctl">
+          <button id="npShuf" class="ib" aria-label="Shuffle"><i data-ic="shuffle"></i></button>
+          <button id="npPrev" class="ib big" aria-label="Previous track"><i data-ic="prev"></i></button>
+          <button id="npPlay" class="ib huge" aria-label="Play"><i data-ic="play"></i></button>
+          <button id="npNext" class="ib big" aria-label="Next track"><i data-ic="next"></i></button>
+          <button id="npRep" class="ib" aria-label="Repeat"><i data-ic="repeat"></i></button>
+        </div>
+        <label class="np-vol"><i data-ic="vol"></i><input id="npVol" type="range" min="0" max="1" step="0.02" aria-label="Music volume"></label>
+      </div>
+    </div>
+    <div class="np-q"><h3>Up next</h3><div id="npList"></div></div>
+  </div>
 </div>
 
 <div id="lb" hidden>
