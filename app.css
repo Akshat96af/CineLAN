@@ -143,8 +143,7 @@ a{color:inherit}
 .panel h2{margin:0 0 8px;font-size:1.25rem;font-weight:500;letter-spacing:-.01em;color:var(--label)}
 .panel p{margin:0 0 18px;color:var(--label-2)}
 .panel .row{display:flex;flex-wrap:wrap}
-.panel .row>*{margin:0 10px 10px 0}
-@media (hover:hover){
+.panel .row>*{margin:0 10px 10px 0}@media (hover:hover){
   .portal:hover{border-color:var(--line-2);transform:translate3d(0,-6px,0)}
   .portal:hover .p-arrow{opacity:1;transform:none}
   .portal:hover .fan>:nth-child(1){--tx:-22;--rot:-9deg}

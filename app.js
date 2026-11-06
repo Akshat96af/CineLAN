@@ -2,7 +2,6 @@
 // Written without optional chaining, ?? or catch-without-binding so older TV browsers (Chromium 6x) can run it.
 (function () {
   "use strict";
-  var HOST = "192.168.29.117:6767";   // fallback only: start.py prints the real address, and ?server= or the gear button stores it
   var SVGNS = "http://www.w3.org/2000/svg";
 
   var $ = function (id) { return document.getElementById(id); };
@@ -23,7 +22,7 @@
     } catch (e) { /* not a usable address: ignore */ }
   }
   // Default: the PC over the page's own scheme. If this page is served by server.py itself, loadLibrary() switches to its own origin.
-  var BASE = store.get("server") || (location.protocol === "https:" ? "https" : "http") + "://" + HOST;
+  var BASE = store.get("server") || "";   // normally empty: the page is served by the PC itself, so addresses are relative. ?server= or the gear button can point it elsewhere
 
   // ---- device profile ---------------------------------------------------------
   if (/[?&]tv=1\b/.test(location.search)) store.set("tv", "1");
@@ -172,7 +171,7 @@
   function loadLibrary() {
     var probe = Promise.resolve();
     if (!store.get("server") && location.protocol.indexOf("http") === 0) {   // served by server.py itself (any port)? use its own origin
-      probe = fetch("/api/files", { method: "HEAD" }).then(function (r) { if (r.ok) BASE = ""; }, function () { /* keep the default */ });
+      probe = fetch("/api/files", { method: "HEAD" }).then(function (r) { if (r.ok) BASE = ""; }, function () { /* keep what we have */ });
     }
     return probe.then(function () {
       if (location.protocol === "https:" && BASE.indexOf("http://") === 0) { libError = "launcher"; return; }   // mixed content: browsers block this
