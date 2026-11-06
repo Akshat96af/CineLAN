@@ -8,17 +8,18 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Cinema">
-<title>Cinema</title>
-<link rel="preload" href="fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<meta name="apple-mobile-web-app-title" content="Cinelan">
+<title>Cinelan</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23060607'/%3E%3Cpath d='M44 20.5A16 16 0 1 0 44 43.5' fill='none' stroke='%23f2c98a' stroke-width='6.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="assets/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css">
 </head>
 <body data-view="boot">
 <!-- opening sequence: the wordmark rises letter by letter, the gate line fills as the library loads, then the frame opens -->
 <div id="boot" aria-hidden="true">
   <div class="lid top"></div><div class="lid bot"></div>
-  <div class="bmark"><span class="w"><span style="--i:0">C</span><span style="--i:1">I</span><span style="--i:2">N</span><span style="--i:3">E</span><span style="--i:4">M</span><span style="--i:5">A</span></span></div>
+  <div class="bmark"><span class="w"><span style="--i:0">C</span><span style="--i:1">I</span><span style="--i:2">N</span><span style="--i:3">E</span><span style="--i:4">L</span><span style="--i:5">A</span><span style="--i:6">N</span></span></div>
   <div class="bline"><i id="bootbar"></i></div>
 </div>
 <div id="amb" aria-hidden="true"><i></i><i></i></div>
@@ -162,7 +163,7 @@
     var b = document.createElement("div");
     b.setAttribute("role", "alert");
     b.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;padding:12px 16px;border-radius:12px;background:#2a1215;color:#ffd7d7;border:1px solid #7a2b33;font:14px/1.45 system-ui,sans-serif";
-    b.textContent = "Cinema hit a problem: " + msg + ". Try reloading; if it keeps happening, send this message to the developer.";
+    b.textContent = "Cinelan hit a problem: " + msg + ". Try reloading; if it keeps happening, send this message to the developer.";
     document.body.appendChild(b);
   }, true);
 })();

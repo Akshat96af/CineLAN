@@ -4,9 +4,9 @@
    light (one small canvas, off on TV), because a soft spill of the film is the point of it.
    Compatibility: no `inset`, fallbacks before clamp()/dvh/aspect-ratio, :focus-visible kept in its own rules
    (an unknown selector would drop the whole rule on older TV browsers). */
-@font-face{font-family:"Geist";src:url("fonts/geist-latin-wght-normal.woff2") format("woff2");font-weight:100 900;font-display:swap}
-@font-face{font-family:"Geist Mono";src:url("fonts/geist-mono-latin-wght-normal.woff2") format("woff2");font-weight:100 900;font-display:swap}
-@font-face{font-family:"Archivo";src:url("fonts/archivo-latin-wdth-normal.woff2") format("woff2");font-weight:100 900;font-stretch:62% 125%;font-display:swap}   /* display: heavy + expanded, film-title feel */
+@font-face{font-family:"Geist";src:url("assets/fonts/geist-latin-wght-normal.woff2") format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"Geist Mono";src:url("assets/fonts/geist-mono-latin-wght-normal.woff2") format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"Archivo";src:url("assets/fonts/archivo-latin-wdth-normal.woff2") format("woff2");font-weight:100 900;font-stretch:62% 125%;font-display:swap}   /* display: heavy + expanded, film-title feel */
 
 :root{
   color-scheme:dark;
@@ -36,6 +36,12 @@
 html{-webkit-text-size-adjust:100%;background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--label);font:450 1.0625rem/1.5 var(--font);-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 body.noscroll{overflow:hidden}
+/* a quiet scrollbar that belongs to the dark UI */
+html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:10px;border:3px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.28);border:3px solid transparent;background-clip:padding-box}
 a,button,input,.card,.tile{touch-action:manipulation}
 a{color:inherit}
 :focus{outline:none}
@@ -247,7 +253,7 @@ a{color:inherit}
 /* ---- image viewer ---- */
 #lb{position:fixed;top:0;right:0;bottom:0;left:0;z-index:30;opacity:0;transition:opacity .5s var(--ease)}
 #lb.show{opacity:1}
-#lb-bg{position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(4,4,5,.96)}
+#lb-bg{position:absolute;top:0;right:0;bottom:0;left:0;background:#040405}
 #lb-stage{position:absolute;top:72px;right:84px;bottom:28px;left:84px;touch-action:none;-webkit-user-select:none;user-select:none}
 #lb-stage.zoomed{cursor:grab}
 .lb-slot{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;will-change:transform}
@@ -535,7 +541,7 @@ body.has-dock .sect{padding-bottom:150px}
 /* now playing */
 #np{position:fixed;top:0;right:0;bottom:0;left:0;z-index:28}
 .np-bg{position:absolute;top:0;right:0;bottom:0;left:0;opacity:0;transition:opacity .5s var(--ease);
-  background:radial-gradient(90% 70% at 30% 20%,rgb(var(--c,120 110 100) / .42),transparent 70%),rgba(6,6,7,.97)}
+  background:radial-gradient(90% 70% at 30% 20%,rgb(var(--c,120 110 100) / .42),transparent 70%),#060607}   /* opaque: the page must never ghost through */
 #np.show .np-bg{opacity:1}
 .np-sheet{position:absolute;top:0;right:0;bottom:0;left:0;overflow:auto;overscroll-behavior:contain;padding:16px var(--pad) 48px;padding-top:max(16px,env(safe-area-inset-top));
   transform:translate3d(0,100%,0);transition:transform .45s var(--ease-ios)}

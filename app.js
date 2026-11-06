@@ -2,7 +2,7 @@
 // Written without optional chaining, ?? or catch-without-binding so older TV browsers (Chromium 6x) can run it.
 (function () {
   "use strict";
-  var HOST = "192.168.29.117:6789";
+  var HOST = "192.168.29.117:6767";   // fallback only: start.py prints the real address, and ?server= or the gear button stores it
   var SVGNS = "http://www.w3.org/2000/svg";
 
   var $ = function (id) { return document.getElementById(id); };
@@ -10,6 +10,18 @@
     get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode / blocked */ } },
   };
+  // A link can carry the PC's address: /?server=http://192.168.1.20:6767 . Only private-network addresses are accepted, so a crafted
+  // link can't point this page (or its auto-open) at somebody else's site.
+  function privateHost(h) {
+    return h === "localhost" || /\.local$/i.test(h) || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h);
+  }
+  var linked = /[?&]server=([^&#]+)/.exec(location.search);
+  if (linked) {
+    try {
+      var lu = new URL(decodeURIComponent(linked[1]));
+      if (/^https?:$/.test(lu.protocol) && privateHost(lu.hostname)) store.set("server", lu.origin);
+    } catch (e) { /* not a usable address: ignore */ }
+  }
   // Default: the PC over the page's own scheme. If this page is served by server.py itself, loadLibrary() switches to its own origin.
   var BASE = store.get("server") || (location.protocol === "https:" ? "https" : "http") + "://" + HOST;
 
@@ -457,7 +469,7 @@
   function mediaSession(m) {
     if (!("mediaSession" in navigator)) return;
     var ms = navigator.mediaSession;
-    try { ms.metadata = new MediaMetadata({ title: m.title, artist: "Cinema", artwork: [{ src: new URL(thumb(m, 512), location.href).href, sizes: "512x288", type: "image/jpeg" }] }); }
+    try { ms.metadata = new MediaMetadata({ title: m.title, artist: "Cinelan", artwork: [{ src: new URL(thumb(m, 512), location.href).href, sizes: "512x288", type: "image/jpeg" }] }); }
     catch (e) { /* MediaMetadata missing */ }
     var set = function (a, f) { try { ms.setActionHandler(a, f); } catch (e) { /* action not supported */ } };
     set("play", function () { video.play(); });
@@ -1251,14 +1263,14 @@
     var c = el("span", "cov");
     c.appendChild(ic("music"));
     if (!s) return c;
-    var img = el("img"), fc = covers[s.folder];
+    var img = el("img"), fc = covers[s.folder];   // a cover image beside the songs wins (WAV can't hold art); the song's own artwork is the fallback
     img.alt = ""; img.crossOrigin = "anonymous"; img.decoding = "async";
     img.onload = function () { img.classList.add("ok"); };
     img.onerror = function () {
-      if (fc && !img.getAttribute("data-fb")) { img.setAttribute("data-fb", "1"); img.src = thumb(fc, w); }
+      if (fc && !img.getAttribute("data-fb")) { img.setAttribute("data-fb", "1"); img.src = thumb(s, w); }
       else if (img.parentNode) img.parentNode.removeChild(img);
     };
-    img.src = thumb(s, w);
+    img.src = thumb(fc || s, w);
     c.appendChild(img);
     return c;
   }
@@ -1580,9 +1592,9 @@
     });
     armReveal(body); markPlaying();
   }
-  function musicFan() {   // album covers for the Music portal, topped up with format tiles
+  function musicFan() {   // one cover per album: the cover image beside the songs, else the artwork inside the first song; topped up with format tiles
     var out = [], seen = {}, exts = {};
-    songs.forEach(function (s) { if (out.length < 3 && covers[s.folder] && !seen[s.folder]) { seen[s.folder] = 1; out.push(mkImg(covers[s.folder], 480, false)); } });
+    songs.forEach(function (s) { if (out.length < 3 && !seen[s.folder]) { seen[s.folder] = 1; out.push(mkImg(covers[s.folder] || s, 480, false)); } });
     songs.forEach(function (s) { exts[s.ext] = 1; });
     Object.keys(exts).forEach(function (x) { if (out.length < 3) { var d = el("div", "doc"); d.appendChild(ic("music")); d.appendChild(el("span", "", x.toUpperCase())); out.push(d); } });
     return out;
@@ -1927,7 +1939,7 @@
     var root = el("section", "landing");
     var brand = el("div", "brand rise"), gear = el("button", "icon-btn");
     gear.setAttribute("aria-label", "Server address"); gear.appendChild(ic("gear")); gear.onclick = changeServer;
-    brand.appendChild(el("span", "mark", "Cinema")); brand.appendChild(gear);
+    brand.appendChild(el("span", "mark", "Cinelan")); brand.appendChild(gear);
     var hero = el("div", "hero"), h1 = el("h1");
     h1.setAttribute("aria-label", greeting());
     h1.appendChild(letters(greeting(), 0));
